@@ -13,14 +13,16 @@ import {
   sortCategories
 } from './lib/helpers.js';
 
+const AUTO_REFRESH_MS = 120_000;
+
 function Header({ query, onQueryChange }) {
   return (
     <header className="site-header">
-      <a className="brand" href="/" aria-label="Ana sayfa">
+      <a className="brand" href="/" aria-label="Home page">
         <span className="brand-signal" aria-hidden="true">
           <i />
         </span>
-        <strong>ErosMaç</strong>
+        <strong>ErosMatch</strong>
       </a>
 
       <label className="search-box">
@@ -28,8 +30,8 @@ function Header({ query, onQueryChange }) {
         <input
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Takım, lig ara..."
-          aria-label="Takım veya lig ara"
+          placeholder="Search team or league..."
+          aria-label="Search team or league"
         />
       </label>
     </header>
@@ -41,15 +43,16 @@ function Hero({ total, generatedAt, expiresIn, onRefresh, loading }) {
     <section className="hero">
       <div className="hero-glow" />
       <div className="hero-content">
-        <span className="hero-live"><i /> CANLI YAYIN</span>
-        <h1>Tüm Maçlar. <span>Tek Yerde.</span></h1>
-        <p>Şu anda <strong>{total}</strong> maç yayında. Bir maça tıkla, hemen izlemeye başla.</p>
+        <span className="hero-live"><i /> LIVE BROADCAST</span>
+        <h1>All Matches. <span>One Place.</span></h1>
+        <p><strong>{total}</strong> matches are live right now. Pick a match and start watching instantly.</p>
 
         <div className="hero-meta">
-          {generatedAt && <span>Son güncelleme: {formatMetaTime(generatedAt)}</span>}
-          {expiresIn && <span>Liste süresi: {expiresIn}</span>}
+          {generatedAt && <span>Last updated: {formatMetaTime(generatedAt)}</span>}
+          {expiresIn && <span>List expires in: {expiresIn}</span>}
+          <span>Auto refresh: 2 minutes</span>
           <button type="button" onClick={onRefresh} disabled={loading}>
-            {loading ? 'Yenileniyor...' : 'Listeyi yenile'}
+            {loading ? 'Refreshing...' : 'Refresh list'}
           </button>
         </div>
       </div>
@@ -61,9 +64,9 @@ function EmptyState({ hasQuery, onClear }) {
   return (
     <div className="empty-state">
       <div className="empty-icon">⚽</div>
-      <h2>Maç bulunamadı</h2>
-      <p>{hasQuery ? 'Arama veya kategori filtresiyle eşleşen maç yok.' : 'API şu anda maç listesi döndürmedi.'}</p>
-      {hasQuery && <button type="button" onClick={onClear}>Filtreleri temizle</button>}
+      <h2>No matches found</h2>
+      <p>{hasQuery ? 'No matches match your search or category filter.' : 'The API did not return any matches right now.'}</p>
+      {hasQuery && <button type="button" onClick={onClear}>Clear filters</button>}
     </div>
   );
 }
@@ -71,9 +74,9 @@ function EmptyState({ hasQuery, onClear }) {
 function ErrorState({ message, onRetry }) {
   return (
     <div className="error-state">
-      <h2>Liste alınamadı</h2>
+      <h2>Could not load the list</h2>
       <p>{message}</p>
-      <button type="button" onClick={onRetry}>Tekrar dene</button>
+      <button type="button" onClick={onRetry}>Try again</button>
     </div>
   );
 }
@@ -121,7 +124,7 @@ export default function App() {
     } catch (loadError) {
       if (!silent) {
         setStatus('error');
-        setError(loadError instanceof Error ? loadError.message : 'Bilinmeyen hata oluştu.');
+        setError(loadError instanceof Error ? loadError.message : 'An unknown error occurred.');
       }
     }
 
@@ -136,7 +139,7 @@ export default function App() {
     }
 
     firstLoad();
-    const intervalId = window.setInterval(() => loadMatches({ silent: true }), 90_000);
+    const intervalId = window.setInterval(() => loadMatches({ silent: true }), AUTO_REFRESH_MS);
 
     return () => {
       cancelled = true;
@@ -157,7 +160,7 @@ export default function App() {
     const counts = new Map([[ALL_CATEGORY, matches.length]]);
 
     for (const match of matches) {
-      const name = match.category || 'Diğer';
+      const name = match.category || 'Other';
       counts.set(name, (counts.get(name) || 0) + 1);
     }
 
@@ -232,7 +235,7 @@ export default function App() {
             <section className="match-section" key={category}>
               <div className="section-heading">
                 <h2>{category}</h2>
-                <span>{items.length} maç</span>
+                <span>{items.length} {items.length === 1 ? 'match' : 'matches'}</span>
               </div>
 
               <div className="match-grid">

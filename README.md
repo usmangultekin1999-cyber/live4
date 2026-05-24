@@ -1,48 +1,68 @@
-# ErosMaç Cloudflare Worker Yayın Sitesi
+# ErosMatch Cloudflare Worker Site
 
-Cloudflare Workers üzerinde GitHub bağlantısıyla çalışacak React/Vite arayüzü. Maç listesi ve yayın adresleri API'den çekilir; API anahtarı tarayıcıya gömülmez, Worker ortam değişkeninde saklanır.
+A React/Vite live match listing interface designed for Cloudflare Workers. The match list and stream URLs are loaded from your API, while the API key stays on Cloudflare as a runtime secret and is not exposed in the browser.
 
-> Not: Bu proje yalnızca yayın haklarına sahip olduğunuz veya kullanma izniniz olan yayın kaynakları için hazırlanmıştır.
+> Use this project only with stream sources that you own or have permission to publish.
 
-## Özellikler
+## Changes in this version
+
+- Removed the player footer text.
+- Removed the "open stream in a new tab" button/link.
+- The match list now refreshes automatically every 2 minutes.
+- Static website UI text is now English.
+- Common Turkish category names from the API are normalized to English where possible.
+
+## Features
 
 - API proxy: `/api/matches`
-- API anahtarı frontend'e yazılmaz; `MATCH_API_KEY` Cloudflare değişkeninden okunur.
-- Kategori filtreleri, takım/lig araması, otomatik yenileme ve responsive kart tasarımı vardır.
-- Player HLS, DASH ve MP4/WebM gibi direkt video kaynaklarını destekler.
-- Video player açamazsa iframe fallback modunu dener.
+- Cloudflare runtime secret support through `MATCH_API_KEY`
+- Search by team or league
+- Category filters
+- Responsive match cards
+- HLS, DASH, MP4 and WebM player support
+- Iframe fallback for embed-style stream URLs
 
-## Dosya yapısı
+## File structure
 
 ```txt
 worker/index.js             Cloudflare Worker API proxy + static asset router
-src/App.jsx                 Ana uygulama
-src/components              Kart, kategori ve player bileşenleri
-src/styles.css              Görsel tasarım
-public/_headers             Güvenlik başlıkları
-wrangler.toml               Worker deploy ayarı
+src/App.jsx                 Main React application
+src/components              Match card, category bar and player components
+src/styles.css              Visual design
+public/_headers             Security headers
+wrangler.toml               Cloudflare Worker deployment config
 ```
 
 ## Cloudflare Worker Git deploy
 
-Cloudflare ekranında görünen alanları şöyle bırak:
+Use these settings in the Cloudflare Worker Git deploy screen:
 
-- Project name: `live3`
-- Build command: `npm run build`
-- Deploy command: `npx wrangler deploy`
+```txt
+Build command: npm run build
+Deploy command: npx wrangler deploy
+Path: /
+```
 
-Worker deploy için `wrangler.toml` içindeki `[assets] directory = "./dist"` ayarı Vite build çıktısını Cloudflare Worker Static Assets olarak yayınlar.
+If you uploaded the project inside a subfolder in GitHub, set `Path` to that folder name instead.
 
 ## Environment variables
 
-Cloudflare'da Worker projesine şu değişkenleri ekle:
+After deployment, open your Worker project in Cloudflare and go to:
 
-- `MATCH_API_KEY` = kendi API anahtarın
-- `MATCH_API_URL` = `https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php` *(opsiyonel; varsayılan zaten budur)*
+```txt
+Settings > Variables and Secrets
+```
 
-API anahtarını `.env`, `.dev.vars` veya GitHub dosyasına koyma.
+Add these values:
 
-## Yerel çalıştırma
+```txt
+MATCH_API_KEY = your API key
+MATCH_API_URL = https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php
+```
+
+`MATCH_API_KEY` should be added as a secret. Do not upload `.env`, `.dev.vars`, or your real API key to GitHub.
+
+## Local development
 
 ```bash
 npm install
@@ -50,20 +70,20 @@ npm run build
 npx wrangler dev
 ```
 
-Yerelde API anahtarı için `.dev.vars` dosyası oluştur:
+For local development, create a `.dev.vars` file:
 
 ```txt
-MATCH_API_KEY="API_ANAHTARIN"
+MATCH_API_KEY="YOUR_API_KEY"
 MATCH_API_URL="https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php"
 ```
 
-## Player notları
+## Player notes
 
-Player şu sırayla çalışır:
+The player tries sources in this order:
 
-1. `.mp4`, `.webm`, `.ogg` gibi direkt video kaynakları native `<video>` ile açılır.
-2. `.mpd` kaynakları DASH player ile açılır.
-3. Diğer kaynaklar önce HLS player ile denenir.
-4. HLS player kaynağı okuyamazsa iframe fallback açılır.
+1. Direct video files such as `.mp4`, `.webm`, `.ogg`
+2. DASH `.mpd` streams
+3. HLS streams through `hls.js`
+4. Iframe fallback for embed-style sources
 
-Yayın kaynağı CORS, DRM veya domain izinleri nedeniyle tarayıcıya izin vermiyorsa frontend tarafında bunu aşmak mümkün değildir; yayın servisinde izinlerin düzenlenmesi gerekir.
+If a stream source blocks CORS, requires DRM, blocks your domain/referrer, or returns missing media files such as `404` for `.m3u8` segments, the frontend cannot bypass that. The stream provider must allow your domain and provide a working source.

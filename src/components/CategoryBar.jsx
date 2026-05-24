@@ -1,6 +1,6 @@
 export default function CategoryBar({ categories, activeCategory, onChange }) {
   return (
-    <nav className="category-shell" aria-label="Spor kategorileri">
+    <nav className="category-shell" aria-label="Sports categories">
       <div className="category-track">
         {categories.map((category) => {
           const active = category.name === activeCategory;

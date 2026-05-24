@@ -1,5 +1,41 @@
 const DEFAULT_API_URL = 'https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php';
 
+const CATEGORY_TRANSLATIONS = new Map([
+  ['tumu', 'All'],
+  ['tum', 'All'],
+  ['all', 'All'],
+  ['diger', 'Other'],
+  ['other', 'Other'],
+  ['futbol', 'Football'],
+  ['football', 'Football'],
+  ['basketbol', 'Basketball'],
+  ['basketball', 'Basketball'],
+  ['tenis', 'Tennis'],
+  ['tennis', 'Tennis'],
+  ['voleybol', 'Volleyball'],
+  ['volleyball', 'Volleyball'],
+  ['beach volleyball', 'Beach Volleyball'],
+  ['plaj voleybolu', 'Beach Volleyball'],
+  ['badminton', 'Badminton'],
+  ['bowling', 'Bowling'],
+  ['cricket', 'Cricket'],
+  ['fifa', 'FIFA'],
+  ['futsal', 'Futsal'],
+  ['hentbol', 'Handball'],
+  ['handball', 'Handball'],
+  ['ice hockey', 'Ice Hockey'],
+  ['buz hokeyi', 'Ice Hockey'],
+  ['baseball', 'Baseball'],
+  ['beyzbol', 'Baseball'],
+  ['table tennis', 'Table Tennis'],
+  ['masa tenisi', 'Table Tennis'],
+  ['esports', 'Esports'],
+  ['e-spor', 'Esports'],
+  ['formula 1', 'Formula 1'],
+  ['motor sports', 'Motorsport'],
+  ['motorsport', 'Motorsport']
+]);
+
 function jsonResponse(payload, status = 200, headers = {}) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -15,13 +51,28 @@ function cleanString(value, fallback = '') {
   return String(value).trim();
 }
 
+function normalizeLookup(value = '') {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function toEnglishCategory(value) {
+  const clean = cleanString(value, 'Other');
+  const key = normalizeLookup(clean);
+  return CATEGORY_TRANSLATIONS.get(key) || clean;
+}
+
 function normalizeMatch(match) {
   return {
     id: cleanString(match?.id),
-    category: cleanString(match?.category, 'Diğer'),
+    category: toEnglishCategory(match?.category),
     league: cleanString(match?.league),
-    home: cleanString(match?.home, 'Ev Sahibi'),
-    away: cleanString(match?.away, 'Deplasman'),
+    home: cleanString(match?.home, 'Home'),
+    away: cleanString(match?.away, 'Away'),
     home_icon: cleanString(match?.home_icon),
     away_icon: cleanString(match?.away_icon),
     videoid: cleanString(match?.videoid)
@@ -36,7 +87,7 @@ async function handleMatches(env) {
     return jsonResponse(
       {
         success: false,
-        error: 'MATCH_API_KEY Cloudflare environment variable olarak tanımlı değil.'
+        error: 'MATCH_API_KEY is not defined as a Cloudflare environment variable.'
       },
       500,
       { 'Cache-Control': 'no-store' }
@@ -51,7 +102,7 @@ async function handleMatches(env) {
     return jsonResponse(
       {
         success: false,
-        error: 'MATCH_API_URL geçerli bir URL değil.'
+        error: 'MATCH_API_URL is not a valid URL.'
       },
       500,
       { 'Cache-Control': 'no-store' }
@@ -62,7 +113,7 @@ async function handleMatches(env) {
     const upstreamResponse = await fetch(upstreamUrl.toString(), {
       headers: {
         Accept: 'application/json',
-        'User-Agent': 'ErosMac-Cloudflare-Worker/1.0'
+        'User-Agent': 'ErosMatch-Cloudflare-Worker/1.0'
       },
       cf: {
         cacheTtl: 60,
@@ -79,7 +130,7 @@ async function handleMatches(env) {
       return jsonResponse(
         {
           success: false,
-          error: 'Yayın API JSON formatında cevap vermedi.',
+          error: 'The upstream match API did not return JSON.',
           status: upstreamResponse.status,
           preview: text.slice(0, 300)
         },
@@ -92,7 +143,7 @@ async function handleMatches(env) {
       return jsonResponse(
         {
           success: false,
-          error: upstreamJson.error || upstreamJson.message || 'Yayın API isteği başarısız oldu.',
+          error: upstreamJson.error || upstreamJson.message || 'The upstream match API request failed.',
           status: upstreamResponse.status
         },
         502,
@@ -119,7 +170,7 @@ async function handleMatches(env) {
     return jsonResponse(
       {
         success: false,
-        error: 'Yayın API bağlantısı kurulamadı.',
+        error: 'Could not connect to the upstream match API.',
         detail: error instanceof Error ? error.message : String(error)
       },
       502,
@@ -137,7 +188,7 @@ export default {
     }
 
     if (url.pathname.startsWith('/api/')) {
-      return jsonResponse({ success: false, error: 'API endpoint bulunamadı.' }, 404, {
+      return jsonResponse({ success: false, error: 'API endpoint not found.' }, 404, {
         'Cache-Control': 'no-store'
       });
     }

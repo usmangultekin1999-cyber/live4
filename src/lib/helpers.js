@@ -1,4 +1,4 @@
-export const ALL_CATEGORY = 'Tümü';
+export const ALL_CATEGORY = 'All';
 
 export function parseLeague(rawLeague = '') {
   const raw = String(rawLeague || '').trim();
@@ -7,7 +7,7 @@ export function parseLeague(rawLeague = '') {
   if (!match) {
     return {
       time: '',
-      league: raw || 'Lig bilgisi yok'
+      league: raw || 'No league information'
     };
   }
 
@@ -24,14 +24,14 @@ export function getInitials(value = '') {
     .filter(Boolean);
 
   if (words.length === 0) return 'TV';
-  if (words.length === 1) return words[0].slice(0, 2).toLocaleUpperCase('tr-TR');
+  if (words.length === 1) return words[0].slice(0, 2).toLocaleUpperCase('en-US');
 
-  return `${words[0][0] || ''}${words[1][0] || ''}`.toLocaleUpperCase('tr-TR');
+  return `${words[0][0] || ''}${words[1][0] || ''}`.toLocaleUpperCase('en-US');
 }
 
 export function normalizeText(value = '') {
   return String(value)
-    .toLocaleLowerCase('tr-TR')
+    .toLocaleLowerCase('en-US')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 }
@@ -50,19 +50,19 @@ export function isMatchSearchHit(match, query) {
 export function sortCategories(a, b) {
   if (a.name === ALL_CATEGORY) return -1;
   if (b.name === ALL_CATEGORY) return 1;
-  return a.name.localeCompare(b.name, 'tr-TR', { sensitivity: 'base' });
+  return a.name.localeCompare(b.name, 'en-US', { sensitivity: 'base' });
 }
 
 export function groupByCategory(matches) {
   const groups = new Map();
 
   for (const match of matches) {
-    const category = match.category || 'Diğer';
+    const category = match.category || 'Other';
     if (!groups.has(category)) groups.set(category, []);
     groups.get(category).push(match);
   }
 
-  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'tr-TR'));
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'en-US'));
 }
 
 export function formatMetaTime(value) {
@@ -71,7 +71,7 @@ export function formatMetaTime(value) {
   const date = new Date(String(value).replace(' ', 'T'));
   if (Number.isNaN(date.getTime())) return String(value);
 
-  return new Intl.DateTimeFormat('tr-TR', {
+  return new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
     day: '2-digit',

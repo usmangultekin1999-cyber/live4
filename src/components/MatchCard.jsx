@@ -11,11 +11,11 @@ export default function MatchCard({ match, onOpen }) {
       className={`match-card ${disabled ? 'is-disabled' : ''}`}
       onClick={() => !disabled && onOpen(match)}
       disabled={disabled}
-      aria-label={`${match.home} - ${match.away} maçını aç`}
+      aria-label={`Open ${match.home} vs ${match.away}`}
     >
       <span className="card-topline">
-        <span className="sport-badge">{match.category || 'Yayın'}</span>
-        <span className="match-time">{time || 'Canlı'}</span>
+        <span className="sport-badge">{match.category || 'Stream'}</span>
+        <span className="match-time">{time || 'Live'}</span>
       </span>
 
       <span className="league-name" title={league}>{league}</span>
@@ -35,7 +35,7 @@ export default function MatchCard({ match, onOpen }) {
       </span>
 
       <span className="card-action">
-        {disabled ? 'Yayın yok' : 'İzlemeye başla'}
+        {disabled ? 'No stream' : 'Start watching'}
       </span>
     </button>
   );

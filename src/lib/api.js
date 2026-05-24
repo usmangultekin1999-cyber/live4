@@ -11,7 +11,7 @@ export async function fetchMatches({ signal } = {}) {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || !payload?.success) {
-    throw new Error(payload?.error || 'Maç listesi alınamadı.');
+    throw new Error(payload?.error || 'Could not load the match list.');
   }
 
   return payload;

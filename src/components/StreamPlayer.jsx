@@ -12,7 +12,7 @@ export default function StreamPlayer({ match, onClose }) {
   const videoRef = useRef(null);
   const iframeRef = useRef(null);
   const [mode, setMode] = useState('loading');
-  const [notice, setNotice] = useState('Yayın hazırlanıyor...');
+  const [message, setMessage] = useState('');
   const streamUrl = useMemo(() => String(match?.videoid || '').trim(), [match]);
   const { time, league } = parseLeague(match?.league || '');
 
@@ -33,11 +33,11 @@ export default function StreamPlayer({ match, onClose }) {
 
     async function startPlayer() {
       setMode('loading');
-      setNotice('Yayın hazırlanıyor...');
+      setMessage('');
 
       if (!video || !streamUrl) {
         setMode('empty');
-        setNotice('Bu maç için yayın adresi bulunamadı.');
+        setMessage('Stream unavailable.');
         return;
       }
 
@@ -46,7 +46,7 @@ export default function StreamPlayer({ match, onClose }) {
 
       const playSoftly = () => {
         video.play().catch(() => {
-          setNotice('Oynatmak için player üzerindeki başlat tuşuna bas.');
+          // Autoplay can be blocked by the browser. The user can press play manually.
         });
       };
 
@@ -55,13 +55,14 @@ export default function StreamPlayer({ match, onClose }) {
         video.src = streamUrl;
         video.load();
         setMode('video');
+        setMessage('');
         playSoftly();
       };
 
-      const startFallback = (message) => {
+      const startFallback = () => {
         if (destroyed) return;
         setMode('fallback');
-        setNotice(message || 'Bu kaynak video player ile açılamadı. Embed modu deneniyor.');
+        setMessage('');
       };
 
       const kind = streamKind(streamUrl);
@@ -79,8 +80,9 @@ export default function StreamPlayer({ match, onClose }) {
           dashInstance = dashjs.MediaPlayer().create();
           dashInstance.initialize(video, streamUrl, true);
           setMode('video');
+          setMessage('');
         } catch (error) {
-          startFallback('DASH player başlatılamadı. Embed modu deneniyor.');
+          startFallback();
         }
         return;
       }
@@ -110,6 +112,7 @@ export default function StreamPlayer({ match, onClose }) {
           hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
             if (!destroyed) {
               setMode('video');
+              setMessage('');
               playSoftly();
             }
           });
@@ -117,14 +120,14 @@ export default function StreamPlayer({ match, onClose }) {
             if (data?.fatal) {
               hlsInstance?.destroy();
               hlsInstance = null;
-              startFallback('Yayın kaynağı HLS player tarafından okunamadı. Embed modu deneniyor.');
+              startFallback();
             }
           });
         } else {
           startDirect();
         }
       } catch (error) {
-        startFallback('HLS player yüklenemedi. Embed modu deneniyor.');
+        startFallback();
       }
     }
 
@@ -143,27 +146,32 @@ export default function StreamPlayer({ match, onClose }) {
   }, [streamUrl]);
 
   return (
-    <div className="player-overlay" role="dialog" aria-modal="true" aria-label="Yayın player">
+    <div className="player-overlay" role="dialog" aria-modal="true" aria-label="Live stream player">
       <div className="player-backdrop" onClick={onClose} />
 
       <section className="player-panel">
         <header className="player-header">
           <div>
-            <span className="live-chip"><i /> CANLI YAYIN</span>
+            <span className="live-chip"><i /> LIVE BROADCAST</span>
             <h2>{match.home} <span>vs</span> {match.away}</h2>
             <p>{time ? `${time} | ` : ''}{league}</p>
           </div>
 
-          <button type="button" className="close-button" onClick={onClose} aria-label="Playerı kapat">
+          <button type="button" className="close-button" onClick={onClose} aria-label="Close player">
             ×
           </button>
         </header>
 
         <div className="video-shell">
-          {(mode === 'loading' || mode === 'empty') && (
-            <div className="video-message">
+          {mode === 'loading' && (
+            <div className="video-message" aria-label="Loading stream">
               <span className="loader" />
-              <p>{notice}</p>
+            </div>
+          )}
+
+          {mode === 'empty' && (
+            <div className="video-message">
+              <p>{message}</p>
             </div>
           )}
 
@@ -179,7 +187,7 @@ export default function StreamPlayer({ match, onClose }) {
           {mode === 'fallback' && (
             <iframe
               ref={iframeRef}
-              title={`${match.home} - ${match.away} yayını`}
+              title={`${match.home} vs ${match.away} stream`}
               src={streamUrl}
               allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
               allowFullScreen
@@ -187,11 +195,6 @@ export default function StreamPlayer({ match, onClose }) {
             />
           )}
         </div>
-
-        <footer className="player-footer">
-          <p>{notice}</p>
-          <a href={streamUrl} target="_blank" rel="noreferrer">Yayını yeni sekmede aç</a>
-        </footer>
       </section>
     </div>
   );
