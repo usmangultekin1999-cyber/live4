@@ -1,24 +1,109 @@
-export const ALL_CATEGORY = 'All';
+import { localeForLanguage, t } from './i18n.js';
 
-export function parseLeague(rawLeague = '') {
-  const raw = String(rawLeague || '').trim();
-  const match = raw.match(/^(\d{1,2}:\d{2})\s*\|\s*(.+)$/);
+export const ALL_CATEGORY = '__all__';
+export const OTHER_CATEGORY = '__other__';
 
-  if (!match) {
+const ENTITY_MAP = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&apos;': "'",
+  '&nbsp;': ' '
+};
+
+export function decodeEntities(value = '') {
+  let text = String(value || '');
+
+  if (typeof document !== 'undefined') {
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = text;
+    text = textarea.value;
+  } else {
+    text = text.replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/gi, (entity) => ENTITY_MAP[entity.toLowerCase()] || entity);
+  }
+
+  return text;
+}
+
+export function cleanDisplayText(value = '', fallback = '') {
+  if (value === null || value === undefined) return fallback;
+
+  let text = decodeEntities(String(value));
+
+  // Some upstream league titles include decorative HTML/CSS such as
+  // <style>...</style><span>GÜNÜN MAÇI</span>. Remove it before React renders it as text.
+  text = text
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+
+  // Defensive cleanup for malformed CSS that may arrive without valid tags.
+  text = text
+    .replace(/@keyframes\s+[\s\S]*?(?:}\s*}|$)/gi, ' ')
+    .replace(/\b(?:animation|background|box-shadow|border|color|display|font-size|font-weight|linear-gradient|margin|padding|transform)\s*:[^|<>]+/gi, ' ')
+    .replace(/[{};]/g, ' ')
+    .replace(/\s*\|\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return text || fallback;
+}
+
+function translateLeaguePhrase(value = '', language = 'en') {
+  const phrase = t(language, 'matchOfTheDay');
+
+  return String(value || '')
+    .replace(/g[üu]n[üu]n\s+ma[çc](?:[iı])?/giu, phrase)
+    .replace(/today'?s?\s+match/giu, phrase)
+    .replace(/match\s+of\s+the\s+day/giu, phrase)
+    .replace(/featured\s+match/giu, phrase)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function parseLeague(rawLeague = '', language = 'en') {
+  const raw = cleanDisplayText(rawLeague);
+
+  if (!raw) {
     return {
       time: '',
-      league: raw || 'No league information'
+      league: t(language, 'noLeagueInfo')
+    };
+  }
+
+  const leadingTime = raw.match(/^(\d{1,2}:\d{2})\s*\|\s*(.*)$/);
+  if (leadingTime) {
+    return {
+      time: leadingTime[1],
+      league: translateLeaguePhrase(leadingTime[2] || t(language, 'noLeagueInfo'), language)
+    };
+  }
+
+  const anyTime = raw.match(/\b(\d{1,2}:\d{2})\b/);
+  if (anyTime) {
+    const league = raw
+      .replace(anyTime[0], ' ')
+      .replace(/\|/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return {
+      time: anyTime[1],
+      league: translateLeaguePhrase(league || t(language, 'noLeagueInfo'), language)
     };
   }
 
   return {
-    time: match[1],
-    league: match[2]
+    time: '',
+    league: translateLeaguePhrase(raw, language)
   };
 }
 
 export function getInitials(value = '') {
-  const words = String(value)
+  const words = cleanDisplayText(value)
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter(Boolean);
@@ -30,10 +115,16 @@ export function getInitials(value = '') {
 }
 
 export function normalizeText(value = '') {
-  return String(value)
+  return cleanDisplayText(value)
     .toLocaleLowerCase('en-US')
+    .replace(/ı/g, 'i')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
+}
+
+export function getCategoryId(match) {
+  const category = cleanDisplayText(match?.category || '');
+  return category || OTHER_CATEGORY;
 }
 
 export function isMatchSearchHit(match, query) {
@@ -47,31 +138,31 @@ export function isMatchSearchHit(match, query) {
   return haystack.includes(q);
 }
 
-export function sortCategories(a, b) {
-  if (a.name === ALL_CATEGORY) return -1;
-  if (b.name === ALL_CATEGORY) return 1;
-  return a.name.localeCompare(b.name, 'en-US', { sensitivity: 'base' });
+export function sortCategoryItems(a, b, language = 'en') {
+  if (a.id === ALL_CATEGORY) return -1;
+  if (b.id === ALL_CATEGORY) return 1;
+  return a.label.localeCompare(b.label, localeForLanguage(language), { sensitivity: 'base' });
 }
 
 export function groupByCategory(matches) {
   const groups = new Map();
 
   for (const match of matches) {
-    const category = match.category || 'Other';
+    const category = getCategoryId(match);
     if (!groups.has(category)) groups.set(category, []);
     groups.get(category).push(match);
   }
 
-  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'en-US'));
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'en-US', { sensitivity: 'base' }));
 }
 
-export function formatMetaTime(value) {
+export function formatMetaTime(value, language = 'en') {
   if (!value) return '';
 
   const date = new Date(String(value).replace(' ', 'T'));
-  if (Number.isNaN(date.getTime())) return String(value);
+  if (Number.isNaN(date.getTime())) return cleanDisplayText(value);
 
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat(localeForLanguage(language), {
     hour: '2-digit',
     minute: '2-digit',
     day: '2-digit',

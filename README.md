@@ -1,23 +1,24 @@
-# ErosMatch Cloudflare Worker Site
+# erosmactv Cloudflare Worker Site
 
-A React/Vite live match listing interface designed for Cloudflare Workers. The match list and stream URLs are loaded from your API, while the API key stays on Cloudflare as a runtime secret and is not exposed in the browser.
+A React/Vite live match listing interface for Cloudflare Workers. The match list and stream URLs are loaded from your API, while the API key stays on Cloudflare as a runtime secret and is not exposed in the browser.
 
 > Use this project only with stream sources that you own or have permission to publish.
 
 ## Changes in this version
 
-- Removed the player footer text.
-- Removed the "open stream in a new tab" button/link.
-- The match list now refreshes automatically every 2 minutes.
-- Static website UI text is now English.
-- Common Turkish category names from the API are normalized to English where possible.
+- Added a language selector for English, Turkish, German, Spanish, Chinese, Hindi and French.
+- The site name stays `erosmactv` in every language.
+- Cleaned upstream match/league text before rendering. Decorative HTML/CSS such as `<style>...</style><span>GÜNÜN MAÇI</span>` is stripped so it no longer appears on match cards or in the player header.
+- The match list continues to auto-refresh every 2 minutes.
+- The player footer text and the old “open in new tab” link remain removed.
 
 ## Features
 
 - API proxy: `/api/matches`
 - Cloudflare runtime secret support through `MATCH_API_KEY`
+- Multilingual UI: EN, TR, DE, ES, ZH, HI, FR
 - Search by team or league
-- Category filters
+- Category filters with translated common sports labels
 - Responsive match cards
 - HLS, DASH, MP4 and WebM player support
 - Iframe fallback for embed-style stream URLs
@@ -26,7 +27,10 @@ A React/Vite live match listing interface designed for Cloudflare Workers. The m
 
 ```txt
 worker/index.js             Cloudflare Worker API proxy + static asset router
+functions/api/matches.js    Cloudflare Pages Functions API proxy fallback
 src/App.jsx                 Main React application
+src/lib/i18n.js             Language text and category translations
+src/lib/helpers.js          Text cleanup, parsing and formatting helpers
 src/components              Match card, category bar and player components
 src/styles.css              Visual design
 public/_headers             Security headers

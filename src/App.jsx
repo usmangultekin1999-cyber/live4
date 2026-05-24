@@ -6,53 +6,81 @@ import { fetchMatches } from './lib/api.js';
 import {
   ALL_CATEGORY,
   formatMetaTime,
+  getCategoryId,
   getMatchFromUrl,
   groupByCategory,
   isMatchSearchHit,
   setMatchUrl,
-  sortCategories
+  sortCategoryItems
 } from './lib/helpers.js';
+import {
+  BRAND_NAME,
+  LANGUAGES,
+  getInitialLanguage,
+  saveLanguage,
+  t,
+  translateCategory
+} from './lib/i18n.js';
 
 const AUTO_REFRESH_MS = 120_000;
 
-function Header({ query, onQueryChange }) {
+function matchWord(language, count) {
+  return count === 1 ? t(language, 'matchSingular') : t(language, 'matchPlural');
+}
+
+function Header({ query, onQueryChange, language, onLanguageChange }) {
   return (
     <header className="site-header">
-      <a className="brand" href="/" aria-label="Home page">
+      <a className="brand" href="/" aria-label={t(language, 'homeAria')}>
         <span className="brand-signal" aria-hidden="true">
           <i />
         </span>
-        <strong>ErosMatch</strong>
+        <strong>{BRAND_NAME}</strong>
       </a>
 
-      <label className="search-box">
-        <span aria-hidden="true">⌕</span>
-        <input
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Search team or league..."
-          aria-label="Search team or league"
-        />
-      </label>
+      <div className="header-controls">
+        <label className="search-box">
+          <span aria-hidden="true">⌕</span>
+          <input
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder={t(language, 'searchPlaceholder')}
+            aria-label={t(language, 'searchAria')}
+          />
+        </label>
+
+        <label className="language-control">
+          <span aria-hidden="true">🌐</span>
+          <select
+            value={language}
+            onChange={(event) => onLanguageChange(event.target.value)}
+            aria-label={t(language, 'languageAria')}
+          >
+            {LANGUAGES.map((item) => (
+              <option key={item.code} value={item.code}>{item.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
     </header>
   );
 }
 
-function Hero({ total, generatedAt, expiresIn, onRefresh, loading }) {
+function Hero({ total, generatedAt, expiresIn, onRefresh, loading, language }) {
   return (
     <section className="hero">
       <div className="hero-glow" />
       <div className="hero-content">
-        <span className="hero-live"><i /> LIVE BROADCAST</span>
-        <h1>All Matches. <span>One Place.</span></h1>
-        <p><strong>{total}</strong> matches are live right now. Pick a match and start watching instantly.</p>
+        <span className="hero-live"><i /> {t(language, 'liveStreams')}</span>
+        <h1>{t(language, 'heroTitleMain')} <span>{t(language, 'heroTitleAccent')}</span></h1>
+        <p>{t(language, 'heroDescription', { count: total, matchWord: matchWord(language, total) })}</p>
 
         <div className="hero-meta">
-          {generatedAt && <span>Last updated: {formatMetaTime(generatedAt)}</span>}
-          {expiresIn && <span>List expires in: {expiresIn}</span>}
-          <span>Auto refresh: 2 minutes</span>
+          {generatedAt && <span>{t(language, 'lastUpdate')} {formatMetaTime(generatedAt, language)}</span>}
+          {expiresIn && <span>{t(language, 'listExpiresIn')} {expiresIn}</span>}
+          <span>{t(language, 'autoRefresh')}</span>
           <button type="button" onClick={onRefresh} disabled={loading}>
-            {loading ? 'Refreshing...' : 'Refresh list'}
+            {loading ? t(language, 'refreshing') : t(language, 'refreshList')}
           </button>
         </div>
       </div>
@@ -60,23 +88,23 @@ function Hero({ total, generatedAt, expiresIn, onRefresh, loading }) {
   );
 }
 
-function EmptyState({ hasQuery, onClear }) {
+function EmptyState({ hasQuery, onClear, language }) {
   return (
     <div className="empty-state">
       <div className="empty-icon">⚽</div>
-      <h2>No matches found</h2>
-      <p>{hasQuery ? 'No matches match your search or category filter.' : 'The API did not return any matches right now.'}</p>
-      {hasQuery && <button type="button" onClick={onClear}>Clear filters</button>}
+      <h2>{t(language, 'noMatchesFound')}</h2>
+      <p>{hasQuery ? t(language, 'noMatchesMatch') : t(language, 'apiNoMatches')}</p>
+      {hasQuery && <button type="button" onClick={onClear}>{t(language, 'clearFilters')}</button>}
     </div>
   );
 }
 
-function ErrorState({ message, onRetry }) {
+function ErrorState({ message, onRetry, language }) {
   return (
     <div className="error-state">
-      <h2>Could not load the list</h2>
+      <h2>{t(language, 'couldNotLoad')}</h2>
       <p>{message}</p>
-      <button type="button" onClick={onRetry}>Try again</button>
+      <button type="button" onClick={onRetry}>{t(language, 'tryAgain')}</button>
     </div>
   );
 }
@@ -103,17 +131,22 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY);
   const [activeMatchId, setActiveMatchId] = useState(getMatchFromUrl());
+  const [language, setLanguage] = useState(getInitialLanguage);
+
+  useEffect(() => {
+    saveLanguage(language);
+    document.documentElement.lang = language;
+    document.title = `${BRAND_NAME} | ${t(language, 'liveStreams')}`;
+  }, [language]);
 
   const loadMatches = useCallback(async ({ silent = false } = {}) => {
-    const controller = new AbortController();
-
     if (!silent) {
       setStatus('loading');
       setError('');
     }
 
     try {
-      const payload = await fetchMatches({ signal: controller.signal });
+      const payload = await fetchMatches();
       setMatches(payload.data || []);
       setMeta({
         generated_at: payload.generated_at,
@@ -127,8 +160,6 @@ export default function App() {
         setError(loadError instanceof Error ? loadError.message : 'An unknown error occurred.');
       }
     }
-
-    return () => controller.abort();
   }, []);
 
   useEffect(() => {
@@ -160,18 +191,18 @@ export default function App() {
     const counts = new Map([[ALL_CATEGORY, matches.length]]);
 
     for (const match of matches) {
-      const name = match.category || 'Other';
-      counts.set(name, (counts.get(name) || 0) + 1);
+      const id = getCategoryId(match);
+      counts.set(id, (counts.get(id) || 0) + 1);
     }
 
     return [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort(sortCategories);
-  }, [matches]);
+      .map(([id, count]) => ({ id, count, label: translateCategory(id, language) }))
+      .sort((a, b) => sortCategoryItems(a, b, language));
+  }, [matches, language]);
 
   const filteredMatches = useMemo(() => {
     return matches.filter((match) => {
-      const categoryHit = activeCategory === ALL_CATEGORY || match.category === activeCategory;
+      const categoryHit = activeCategory === ALL_CATEGORY || getCategoryId(match) === activeCategory;
       return categoryHit && isMatchSearchHit(match, query);
     });
   }, [matches, activeCategory, query]);
@@ -203,7 +234,12 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Header query={query} onQueryChange={setQuery} />
+      <Header
+        query={query}
+        onQueryChange={setQuery}
+        language={language}
+        onLanguageChange={setLanguage}
+      />
 
       <main>
         <Hero
@@ -212,35 +248,46 @@ export default function App() {
           expiresIn={meta.expires_in}
           onRefresh={() => loadMatches()}
           loading={status === 'loading'}
+          language={language}
         />
 
         <CategoryBar
           categories={categories}
           activeCategory={activeCategory}
           onChange={setActiveCategory}
+          language={language}
         />
 
         <section className="content-wrap" aria-live="polite">
           {status === 'loading' && <SkeletonGrid />}
 
           {status === 'error' && (
-            <ErrorState message={error} onRetry={() => loadMatches()} />
+            <ErrorState message={error} onRetry={() => loadMatches()} language={language} />
           )}
 
           {status === 'ready' && filteredMatches.length === 0 && (
-            <EmptyState hasQuery={Boolean(query || activeCategory !== ALL_CATEGORY)} onClear={clearFilters} />
+            <EmptyState
+              hasQuery={Boolean(query || activeCategory !== ALL_CATEGORY)}
+              onClear={clearFilters}
+              language={language}
+            />
           )}
 
           {status === 'ready' && filteredMatches.length > 0 && groupedMatches.map(([category, items]) => (
             <section className="match-section" key={category}>
               <div className="section-heading">
-                <h2>{category}</h2>
-                <span>{items.length} {items.length === 1 ? 'match' : 'matches'}</span>
+                <h2>{translateCategory(category, language)}</h2>
+                <span>{items.length} {matchWord(language, items.length)}</span>
               </div>
 
               <div className="match-grid">
                 {items.map((match) => (
-                  <MatchCard key={match.id} match={match} onOpen={openMatch} />
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    onOpen={openMatch}
+                    language={language}
+                  />
                 ))}
               </div>
             </section>
@@ -248,7 +295,7 @@ export default function App() {
         </section>
       </main>
 
-      {activeMatch && <StreamPlayer match={activeMatch} onClose={closeMatch} />}
+      {activeMatch && <StreamPlayer match={activeMatch} onClose={closeMatch} language={language} />}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { parseLeague } from '../lib/helpers.js';
+import { cleanDisplayText, parseLeague } from '../lib/helpers.js';
+import { t } from '../lib/i18n.js';
 
 function streamKind(url = '') {
   const clean = String(url).toLowerCase();
@@ -8,13 +9,15 @@ function streamKind(url = '') {
   return 'hls';
 }
 
-export default function StreamPlayer({ match, onClose }) {
+export default function StreamPlayer({ match, onClose, language }) {
   const videoRef = useRef(null);
   const iframeRef = useRef(null);
   const [mode, setMode] = useState('loading');
   const [message, setMessage] = useState('');
   const streamUrl = useMemo(() => String(match?.videoid || '').trim(), [match]);
-  const { time, league } = parseLeague(match?.league || '');
+  const { time, league } = parseLeague(match?.league || '', language);
+  const home = cleanDisplayText(match?.home, 'Home');
+  const away = cleanDisplayText(match?.away, 'Away');
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -37,7 +40,7 @@ export default function StreamPlayer({ match, onClose }) {
 
       if (!video || !streamUrl) {
         setMode('empty');
-        setMessage('Stream unavailable.');
+        setMessage(t(language, 'streamUnavailable'));
         return;
       }
 
@@ -143,21 +146,21 @@ export default function StreamPlayer({ match, onClose }) {
         video.load();
       }
     };
-  }, [streamUrl]);
+  }, [streamUrl, language]);
 
   return (
-    <div className="player-overlay" role="dialog" aria-modal="true" aria-label="Live stream player">
+    <div className="player-overlay" role="dialog" aria-modal="true" aria-label={t(language, 'playerLabel')}>
       <div className="player-backdrop" onClick={onClose} />
 
       <section className="player-panel">
         <header className="player-header">
           <div>
-            <span className="live-chip"><i /> LIVE BROADCAST</span>
-            <h2>{match.home} <span>vs</span> {match.away}</h2>
+            <span className="live-chip"><i /> {t(language, 'liveBroadcast')}</span>
+            <h2>{home} <span>{t(language, 'vs')}</span> {away}</h2>
             <p>{time ? `${time} | ` : ''}{league}</p>
           </div>
 
-          <button type="button" className="close-button" onClick={onClose} aria-label="Close player">
+          <button type="button" className="close-button" onClick={onClose} aria-label={t(language, 'closePlayer')}>
             ×
           </button>
         </header>
@@ -187,7 +190,7 @@ export default function StreamPlayer({ match, onClose }) {
           {mode === 'fallback' && (
             <iframe
               ref={iframeRef}
-              title={`${match.home} vs ${match.away} stream`}
+              title={`${home} ${t(language, 'vs')} ${away} stream`}
               src={streamUrl}
               allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
               allowFullScreen

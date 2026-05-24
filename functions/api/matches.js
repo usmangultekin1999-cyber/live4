@@ -8,8 +8,11 @@ const CATEGORY_TRANSLATIONS = new Map([
   ['other', 'Other'],
   ['futbol', 'Football'],
   ['football', 'Football'],
+  ['soccer', 'Football'],
   ['basketbol', 'Basketball'],
   ['basketball', 'Basketball'],
+  ['table basketball', 'Basketball'],
+  ['table basketball league', 'Basketball'],
   ['tenis', 'Tennis'],
   ['tennis', 'Tennis'],
   ['voleybol', 'Volleyball'],
@@ -19,6 +22,7 @@ const CATEGORY_TRANSLATIONS = new Map([
   ['badminton', 'Badminton'],
   ['bowling', 'Bowling'],
   ['cricket', 'Cricket'],
+  ['kriket', 'Cricket'],
   ['fifa', 'FIFA'],
   ['futsal', 'Futsal'],
   ['hentbol', 'Handball'],
@@ -33,8 +37,27 @@ const CATEGORY_TRANSLATIONS = new Map([
   ['e-spor', 'Esports'],
   ['formula 1', 'Formula 1'],
   ['motor sports', 'Motorsport'],
-  ['motorsport', 'Motorsport']
+  ['motor sporlari', 'Motorsport'],
+  ['motorsport', 'Motorsport'],
+  ['rugby', 'Rugby'],
+  ['boxing', 'Boxing'],
+  ['boks', 'Boxing'],
+  ['mma', 'MMA'],
+  ['snooker', 'Snooker'],
+  ['darts', 'Darts'],
+  ['golf', 'Golf'],
+  ['cycling', 'Cycling'],
+  ['bisiklet', 'Cycling']
 ]);
+
+const ENTITY_MAP = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' '
+};
 
 function jsonResponse(payload, status = 200, headers = {}) {
   return new Response(JSON.stringify(payload), {
@@ -46,13 +69,49 @@ function jsonResponse(payload, status = 200, headers = {}) {
   });
 }
 
+function decodeHtmlEntities(value = '') {
+  return String(value).replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (entity, code) => {
+    const normalized = code.toLowerCase();
+
+    if (normalized[0] === '#') {
+      const number = normalized[1] === 'x'
+        ? Number.parseInt(normalized.slice(2), 16)
+        : Number.parseInt(normalized.slice(1), 10);
+      return Number.isFinite(number) ? String.fromCodePoint(number) : entity;
+    }
+
+    return ENTITY_MAP[normalized] ?? entity;
+  });
+}
+
 function cleanString(value, fallback = '') {
   if (value === null || value === undefined) return fallback;
-  return String(value).trim();
+  return String(value).trim() || fallback;
+}
+
+function cleanDisplayText(value, fallback = '') {
+  if (value === null || value === undefined) return fallback;
+
+  let text = decodeHtmlEntities(String(value));
+
+  text = text
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/@keyframes\s+[^{]+\{[\s\S]*?\}\s*\}/gi, ' ')
+    .replace(/\b(?:transform|box-shadow|background|background-image|linear-gradient|animation|font-size|font-weight|color|border-radius|margin|padding|display)\s*:\s*[^;]+;?/gi, ' ')
+    .replace(/[{}<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return text || fallback;
 }
 
 function normalizeLookup(value = '') {
-  return String(value)
+  return cleanDisplayText(value)
     .trim()
     .toLowerCase()
     .replace(/ı/g, 'i')
@@ -61,25 +120,50 @@ function normalizeLookup(value = '') {
 }
 
 function toEnglishCategory(value) {
-  const clean = cleanString(value, 'Other');
+  const clean = cleanDisplayText(value, 'Other');
   const key = normalizeLookup(clean);
   return CATEGORY_TRANSLATIONS.get(key) || clean;
+}
+
+function normalizeFeaturedLabel(value = '') {
+  return cleanDisplayText(value)
+    .replace(/G[ÜU]N[ÜU]N\s+MA[ÇC](?:[Iİiı])?/giu, 'Featured Match')
+    .replace(/\bTODAY'?S?\s+MATCH\b/giu, 'Featured Match')
+    .replace(/\bFEATURED\s+MATCH\b/giu, 'Featured Match')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanLeague(value) {
+  const text = normalizeFeaturedLabel(value);
+  if (!text) return '';
+
+  const timeMatch = text.match(/\b(\d{1,2}:\d{2})\b/);
+  if (!timeMatch) return text;
+
+  const time = timeMatch[1];
+  const timeIndex = timeMatch.index || 0;
+  const before = text.slice(0, timeIndex).replace(/[|•·-]+$/g, '').trim();
+  const after = text.slice(timeIndex + time.length).replace(/^[|•·-]+/g, '').replace(/[|•·-]+$/g, '').trim();
+  const league = cleanDisplayText(after || before);
+
+  return league ? `${time} | ${league}` : time;
 }
 
 function normalizeMatch(match) {
   return {
     id: cleanString(match?.id),
     category: toEnglishCategory(match?.category),
-    league: cleanString(match?.league),
-    home: cleanString(match?.home, 'Home'),
-    away: cleanString(match?.away, 'Away'),
+    league: cleanLeague(match?.league),
+    home: cleanDisplayText(match?.home, 'Home'),
+    away: cleanDisplayText(match?.away, 'Away'),
     home_icon: cleanString(match?.home_icon),
     away_icon: cleanString(match?.away_icon),
     videoid: cleanString(match?.videoid)
   };
 }
 
-export async function onRequestGet({ env }) {
+async function handleMatches(env) {
   const apiKey = cleanString(env.MATCH_API_KEY);
   const apiUrl = cleanString(env.MATCH_API_URL, DEFAULT_API_URL);
 
@@ -113,7 +197,7 @@ export async function onRequestGet({ env }) {
     const upstreamResponse = await fetch(upstreamUrl.toString(), {
       headers: {
         Accept: 'application/json',
-        'User-Agent': 'ErosMatch-Cloudflare-Pages/1.0'
+        'User-Agent': 'erosmactv-cloudflare-worker/1.2'
       },
       cf: {
         cacheTtl: 60,
@@ -132,7 +216,7 @@ export async function onRequestGet({ env }) {
           success: false,
           error: 'The upstream match API did not return JSON.',
           status: upstreamResponse.status,
-          preview: text.slice(0, 300)
+          preview: cleanDisplayText(text.slice(0, 300))
         },
         502,
         { 'Cache-Control': 'no-store' }
@@ -143,7 +227,7 @@ export async function onRequestGet({ env }) {
       return jsonResponse(
         {
           success: false,
-          error: upstreamJson.error || upstreamJson.message || 'The upstream match API request failed.',
+          error: cleanDisplayText(upstreamJson.error || upstreamJson.message || 'The upstream match API request failed.'),
           status: upstreamResponse.status
         },
         502,
@@ -157,8 +241,8 @@ export async function onRequestGet({ env }) {
       {
         success: true,
         count: data.length,
-        generated_at: upstreamJson.generated_at || null,
-        expires_in: upstreamJson.expires_in || null,
+        generated_at: cleanDisplayText(upstreamJson.generated_at || ''),
+        expires_in: cleanDisplayText(upstreamJson.expires_in || ''),
         data
       },
       200,
@@ -177,4 +261,8 @@ export async function onRequestGet({ env }) {
       { 'Cache-Control': 'no-store' }
     );
   }
+}
+
+export async function onRequestGet({ env }) {
+  return handleMatches(env);
 }

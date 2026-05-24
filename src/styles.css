@@ -38,7 +38,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -84,7 +85,8 @@ a {
 
 .brand strong {
   font-size: 1.05rem;
-  font-weight: 850;
+  font-weight: 900;
+  text-transform: lowercase;
 }
 
 .brand-signal {
@@ -136,11 +138,23 @@ a {
   box-shadow: 0 0 0 0.25rem rgba(255, 52, 82, 0.12);
 }
 
+
+.header-controls {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
 .search-box {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  width: min(23rem, 46vw);
+  flex: 1 1 auto;
+  min-width: 13rem;
+  max-width: 26rem;
   padding: 0.55rem 0.9rem;
   border: 1px solid rgba(151, 170, 203, 0.16);
   border-radius: 999px;
@@ -159,6 +173,35 @@ a {
 .search-box input::placeholder {
   color: #75849d;
 }
+
+.language-control {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.45rem;
+  padding: 0 0.7rem;
+  border: 1px solid rgba(151, 170, 203, 0.16);
+  border-radius: 999px;
+  background: rgba(18, 26, 41, 0.9);
+  color: var(--muted);
+}
+
+.language-control select {
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  background: transparent;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.language-control option {
+  color: #101827;
+}
+
+
+
 
 .hero {
   position: relative;
@@ -725,6 +768,7 @@ a {
 
   .search-box {
     width: 100%;
+    max-width: none;
   }
 
   .hero-content,
@@ -744,6 +788,8 @@ a {
 }
 
 @media (max-width: 560px) {
+
+
   .hero-content {
     padding-top: 2.2rem;
   }
@@ -762,5 +808,24 @@ a {
 
   .video-shell {
     min-height: 220px;
+  }
+}
+
+@media (max-width: 820px) {
+  .header-controls {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .language-control {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 560px) {
+  .header-controls {
+    gap: 0.6rem;
   }
 }
