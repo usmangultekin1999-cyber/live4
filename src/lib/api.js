@@ -38,3 +38,42 @@ export async function fetchMatches({ signal } = {}) {
     data: Array.isArray(payload.data) ? payload.data.map(normalizeClientMatch) : []
   };
 }
+
+function normalizeDetailsPayload(payload = {}) {
+  return {
+    ...payload,
+    event: payload.event || null,
+    stats: Array.isArray(payload.stats) ? payload.stats : [],
+    odds: Array.isArray(payload.odds) ? payload.odds : [],
+    timeline: Array.isArray(payload.timeline) ? payload.timeline : [],
+    lineups: payload.lineups || null,
+    related: Array.isArray(payload.related) ? payload.related : []
+  };
+}
+
+export async function fetchMatchDetails(match, { signal } = {}) {
+  const params = new URLSearchParams({
+    match_id: cleanDisplayText(match?.id),
+    home: cleanDisplayText(match?.home, 'Home'),
+    away: cleanDisplayText(match?.away, 'Away'),
+    category: cleanDisplayText(match?.category),
+    league: cleanDisplayText(match?.league)
+  });
+
+  const response = await fetch(`/api/match-details?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json'
+    },
+    cache: 'no-store',
+    signal
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || !payload?.success) {
+    throw new Error(payload?.error || 'Could not load match data.');
+  }
+
+  return normalizeDetailsPayload(payload);
+}

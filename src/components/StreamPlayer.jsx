@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import MatchInsights from './MatchInsights.jsx';
 import { cleanDisplayText, parseLeague } from '../lib/helpers.js';
+import { fetchMatchDetails } from '../lib/api.js';
 import { t } from '../lib/i18n.js';
 
 function streamKind(url = '') {
@@ -14,10 +16,41 @@ export default function StreamPlayer({ match, onClose, language }) {
   const iframeRef = useRef(null);
   const [mode, setMode] = useState('loading');
   const [message, setMessage] = useState('');
+  const [detailsStatus, setDetailsStatus] = useState('loading');
+  const [details, setDetails] = useState(null);
+  const [detailsError, setDetailsError] = useState('');
   const streamUrl = useMemo(() => String(match?.videoid || '').trim(), [match]);
   const { time, league } = parseLeague(match?.league || '', language);
   const home = cleanDisplayText(match?.home, 'Home');
   const away = cleanDisplayText(match?.away, 'Away');
+
+
+  useEffect(() => {
+    if (!match?.id) {
+      setDetailsStatus('ready');
+      setDetails(null);
+      setDetailsError('');
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setDetailsStatus('loading');
+    setDetails(null);
+    setDetailsError('');
+
+    fetchMatchDetails(match, { signal: controller.signal })
+      .then((payload) => {
+        setDetails(payload);
+        setDetailsStatus('ready');
+      })
+      .catch((error) => {
+        if (error?.name === 'AbortError') return;
+        setDetailsStatus('error');
+        setDetailsError(error instanceof Error ? error.message : t(language, 'sportsDataError'));
+      });
+
+    return () => controller.abort();
+  }, [match?.id, match?.home, match?.away, match?.category, match?.league, language]);
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -198,6 +231,14 @@ export default function StreamPlayer({ match, onClose, language }) {
             />
           )}
         </div>
+
+        <MatchInsights
+          details={details}
+          status={detailsStatus}
+          error={detailsError}
+          match={match}
+          language={language}
+        />
       </section>
     </div>
   );

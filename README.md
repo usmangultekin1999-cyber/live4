@@ -1,40 +1,45 @@
-# erosmactv Cloudflare Worker Site
+# ErosMacTV Cloudflare Worker Site
 
-A React/Vite live match listing interface for Cloudflare Workers. The match list and stream URLs are loaded from your API, while the API key stays on Cloudflare as a runtime secret and is not exposed in the browser.
+A React/Vite live match listing interface for Cloudflare Workers. The stream match list is loaded from your stream API. Extra event data, odds, statistics, timeline, lineups and related matches are fetched server-side from SportsAPI when a viewer opens a match. API keys stay on Cloudflare as runtime secrets and are not exposed in the browser.
 
-> Use this project only with stream sources that you own or have permission to publish.
+> Use this project only with stream sources and sports data feeds that you own or have permission to publish.
 
 ## Changes in this version
 
-- Added a language selector for English, Turkish, German, Spanish, Chinese, Hindi and French.
-- The site name stays `erosmactv` in every language.
-- Cleaned upstream match/league text before rendering. Decorative HTML/CSS such as `<style>...</style><span>GÜNÜN MAÇI</span>` is stripped so it no longer appears on match cards or in the player header.
-- The match list continues to auto-refresh every 2 minutes.
-- The player footer text and the old “open in new tab” link remain removed.
+- Site name changed to `ErosMacTV` everywhere.
+- Added `/api/match-details`, which matches an opened stream match with SportsAPI events and pulls extra match data.
+- Added player detail panels: event info, statistics, odds, timeline, lineups and related matches.
+- Keeps the language selector for English, Turkish, German, Spanish, Chinese, Hindi and French.
+- Cleans upstream match/league text before rendering. Decorative HTML/CSS such as `<style>...</style><span>GÜNÜN MAÇI</span>` is stripped so it no longer appears on cards or player headings.
+- The match list auto-refreshes every 2 minutes.
 
 ## Features
 
 - API proxy: `/api/matches`
-- Cloudflare runtime secret support through `MATCH_API_KEY`
+- Sports details proxy: `/api/match-details`
+- Cloudflare runtime secret support through `MATCH_API_KEY` and `SPORTS_API_KEY`
 - Multilingual UI: EN, TR, DE, ES, ZH, HI, FR
 - Search by team or league
 - Category filters with translated common sports labels
 - Responsive match cards
 - HLS, DASH, MP4 and WebM player support
 - Iframe fallback for embed-style stream URLs
+- Detail panels that hide gracefully when SportsAPI has no data for a match
 
 ## File structure
 
 ```txt
-worker/index.js             Cloudflare Worker API proxy + static asset router
-functions/api/matches.js    Cloudflare Pages Functions API proxy fallback
-src/App.jsx                 Main React application
-src/lib/i18n.js             Language text and category translations
-src/lib/helpers.js          Text cleanup, parsing and formatting helpers
-src/components              Match card, category bar and player components
-src/styles.css              Visual design
-public/_headers             Security headers
-wrangler.toml               Cloudflare Worker deployment config
+worker/api.js                    Shared Cloudflare API handlers
+worker/index.js                  Cloudflare Worker API router + static asset router
+functions/api/matches.js         Cloudflare Pages Functions fallback for match list
+functions/api/match-details.js   Cloudflare Pages Functions fallback for match details
+src/App.jsx                      Main React application
+src/lib/i18n.js                  Language text and category translations
+src/lib/helpers.js               Text cleanup, parsing and formatting helpers
+src/components                   Match card, category bar, player and data panels
+src/styles.css                   Visual design
+public/_headers                  Security headers
+wrangler.toml                    Cloudflare Worker deployment config
 ```
 
 ## Cloudflare Worker Git deploy
@@ -60,11 +65,15 @@ Settings > Variables and Secrets
 Add these values:
 
 ```txt
-MATCH_API_KEY = your API key
+MATCH_API_KEY = your stream API key
 MATCH_API_URL = https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php
+SPORTS_API_KEY = your SportsAPI key
+SPORTS_API_BASE_URL = https://sports-api.net/api
 ```
 
-`MATCH_API_KEY` should be added as a secret. Do not upload `.env`, `.dev.vars`, or your real API key to GitHub.
+`MATCH_API_KEY` and `SPORTS_API_KEY` should be added as secrets. Do not upload `.env`, `.dev.vars`, or real API keys to GitHub.
+
+You can also use `SPORTS_API_EVENTS_URL` instead of `SPORTS_API_KEY` + `SPORTS_API_BASE_URL` if you prefer storing the complete SportsAPI events URL in Cloudflare, but the recommended setup is to keep only the key in `SPORTS_API_KEY`.
 
 ## Local development
 
@@ -77,9 +86,17 @@ npx wrangler dev
 For local development, create a `.dev.vars` file:
 
 ```txt
-MATCH_API_KEY="YOUR_API_KEY"
+MATCH_API_KEY="YOUR_STREAM_API_KEY"
 MATCH_API_URL="https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php"
+SPORTS_API_KEY="YOUR_SPORTS_API_KEY"
+SPORTS_API_BASE_URL="https://sports-api.net/api"
 ```
+
+## How the SportsAPI enrichment works
+
+When a user opens a match, the Worker calls SportsAPI `/events`, compares event names with the stream match `home`, `away`, `category` and `league`, then fetches additional routes such as `/events/:id`, `/offers/:eventId`, `/group/:groupId` and statistics routes when SportsAPI exposes a usable stats ID.
+
+If SportsAPI cannot match a stream match or has no statistics/odds/lineups for that event, the site shows a clean empty state instead of fake values.
 
 ## Player notes
 
