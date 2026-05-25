@@ -31,10 +31,7 @@ function Header({ query, onQueryChange, language, onLanguageChange }) {
   return (
     <header className="site-header">
       <a className="brand" href="/" aria-label={t(language, 'homeAria')}>
-        <span className="brand-signal" aria-hidden="true">
-          <i />
-        </span>
-        <strong>{BRAND_NAME}</strong>
+        <img className="brand-logo" src="/LOGO.PNG" alt={BRAND_NAME} width="204" height="60" />
       </a>
 
       <div className="header-controls">

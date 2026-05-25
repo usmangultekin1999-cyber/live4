@@ -122,3 +122,9 @@ The player tries sources in this order:
 4. Iframe fallback for embed-style sources
 
 If a stream source blocks CORS, requires DRM, blocks your domain/referrer, or returns missing media files such as `404` for `.m3u8` segments, the frontend cannot bypass that. The stream provider must allow your domain and provide a working source.
+
+
+## Branding assets
+
+The site logo is served from `public/LOGO.PNG`. The favicon and Apple touch icon are served from `public/12.png`.
+
