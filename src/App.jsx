@@ -5,7 +5,6 @@ import StreamPlayer from './components/StreamPlayer.jsx';
 import { fetchMatches } from './lib/api.js';
 import {
   ALL_CATEGORY,
-  formatMetaTime,
   getCategoryId,
   getMatchFromUrl,
   groupByCategory,
@@ -66,28 +65,6 @@ function Header({ query, onQueryChange, language, onLanguageChange }) {
   );
 }
 
-function Hero({ total, generatedAt, expiresIn, onRefresh, loading, language }) {
-  return (
-    <section className="hero">
-      <div className="hero-glow" />
-      <div className="hero-content">
-        <span className="hero-live"><i /> {t(language, 'liveStreams')}</span>
-        <h1>{t(language, 'heroTitleMain')} <span>{t(language, 'heroTitleAccent')}</span></h1>
-        <p>{t(language, 'heroDescription', { count: total, matchWord: matchWord(language, total) })}</p>
-
-        <div className="hero-meta">
-          {generatedAt && <span>{t(language, 'lastUpdate')} {formatMetaTime(generatedAt, language)}</span>}
-          {expiresIn && <span>{t(language, 'listExpiresIn')} {expiresIn}</span>}
-          <span>{t(language, 'autoRefresh')}</span>
-          <button type="button" onClick={onRefresh} disabled={loading}>
-            {loading ? t(language, 'refreshing') : t(language, 'refreshList')}
-          </button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function EmptyState({ hasQuery, onClear, language }) {
   return (
     <div className="empty-state">
@@ -125,7 +102,6 @@ function SkeletonGrid() {
 
 export default function App() {
   const [matches, setMatches] = useState([]);
-  const [meta, setMeta] = useState({ generated_at: null, expires_in: null });
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -148,10 +124,6 @@ export default function App() {
     try {
       const payload = await fetchMatches();
       setMatches(payload.data || []);
-      setMeta({
-        generated_at: payload.generated_at,
-        expires_in: payload.expires_in
-      });
       setStatus('ready');
       setError('');
     } catch (loadError) {
@@ -242,15 +214,6 @@ export default function App() {
       />
 
       <main>
-        <Hero
-          total={matches.length}
-          generatedAt={meta.generated_at}
-          expiresIn={meta.expires_in}
-          onRefresh={() => loadMatches()}
-          loading={status === 'loading'}
-          language={language}
-        />
-
         <div className="main-layout">
           <CategoryBar
             categories={categories}
