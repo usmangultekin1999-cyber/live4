@@ -192,7 +192,7 @@ function EmptyLine({ children }) {
   return <p className="insight-empty">{children}</p>;
 }
 
-function EventInfo({ details, match, language }) {
+function EventInfo({ details, match, language, hasAdvancedData = false }) {
   const event = details?.event || {};
   const home = cleanDisplayText(event.home || match.home, 'Home');
   const away = cleanDisplayText(event.away || match.away, 'Away');
@@ -205,7 +205,7 @@ function EventInfo({ details, match, language }) {
   ].filter(([, value]) => value);
 
   return (
-    <Panel title={t(language, 'eventInfo')} badge={details?.matched ? t(language, 'apiMatched') : t(language, 'streamApiSource')}>
+    <Panel title={t(language, 'eventInfo')} badge={details?.matched && hasAdvancedData ? t(language, 'apiMatched') : undefined}>
       <div className="event-card-mini">
         <div className="mini-team">
           <TeamLogo src={event.home_logo || match.home_icon} name={home} />
@@ -381,9 +381,11 @@ export default function MatchInsights({ details, status, error, match, language 
   const lineups = hasLineupData(details.lineups) ? details.lineups : null;
   const related = Array.isArray(details.related) ? details.related : [];
   const hasMainPanels = stats.length > 0 || timeline.length > 0 || Boolean(lineups);
+  const hasAdvancedData = hasMainPanels || odds.length > 0 || related.length > 0;
+  const insightClassName = hasMainPanels ? 'match-insights' : 'match-insights match-insights--single';
 
   return (
-    <div className="match-insights">
+    <div className={insightClassName}>
       {hasMainPanels && (
         <div className="insight-main">
           {stats.length > 0 && <StatisticsPanel stats={stats} language={language} />}
@@ -393,7 +395,7 @@ export default function MatchInsights({ details, status, error, match, language 
       )}
 
       <aside className="insight-side">
-        <EventInfo details={details} match={match} language={language} />
+        <EventInfo details={details} match={match} language={language} hasAdvancedData={hasAdvancedData} />
         {odds.length > 0 && <OddsPanel odds={odds} language={language} />}
         {related.length > 0 && <RelatedPanel related={related} language={language} />}
       </aside>

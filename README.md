@@ -1,6 +1,6 @@
 # ErosMacTV Cloudflare Worker Site
 
-A React/Vite live match listing interface for Cloudflare Workers. The stream match list is loaded from your stream API. Extra event data, odds, statistics, timeline, lineups and related matches are fetched server-side from SportsAPI when a viewer opens a match. API keys stay on Cloudflare as runtime secrets and are not exposed in the browser.
+A React/Vite live match listing interface for Cloudflare Workers. The stream match list is loaded from your stream API. Live video URLs are not proxied through Cloudflare: the browser plays the original provider URL directly. Extra event data, odds, statistics, timeline, lineups and related matches are fetched server-side from SportsAPI as optional enrichment. API keys stay on Cloudflare as runtime secrets and are not exposed in the browser.
 
 > Use this project only with stream sources and sports data feeds that you own or have permission to publish.
 
@@ -8,7 +8,10 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 
 - Site name remains `ErosMacTV` everywhere, including the header.
 - Category filters are now a vertical left sidebar. Telegram and X/Twitter links are shown at the top of the sidebar.
-- Added `/api/match-details`, which first checks SportsAPI `/api/sportsbook` and then falls back to event list routes to match an opened stream match and pull extra match data.
+- Live stream proxying is explicitly disabled in the Worker. Accidental same-domain HLS/DASH/media requests such as `/v/...`, `.m3u8`, `.ts`, `.m4s` and `.mp4` are rejected instead of being fetched through Cloudflare.
+- The player now uses only the original absolute `videoid` URL from the provider. Relative stream URLs are treated as unavailable so they do not hit your Worker.
+- `/api/match-details` is now fail-safe: SportsAPI timeouts, quota issues or 5xx responses return an empty successful payload instead of a Cloudflare 503. This prevents optional match data from breaking playback.
+- SportsAPI lookups are lighter by default. Rich `/api/sportsbook` scanning is off unless `SPORTS_API_RICH_MODE=1` is added.
 - Added `/api/sports-status`, a safe debug endpoint that shows how many SportsAPI events were loaded and the nearest candidates for a stream match.
 - Added player detail panels: event info, statistics, odds, timeline, lineups and related matches.
 - Keeps the language selector for English, Turkish, German, Spanish, Chinese, Hindi and French.
@@ -24,7 +27,7 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 - Search by team or league
 - Category filters with translated common sports labels
 - Responsive match cards
-- HLS, DASH, MP4 and WebM player support
+- HLS, DASH, MP4 and WebM player support without server-side stream proxying
 - Iframe fallback for embed-style stream URLs
 - Detail panels hide gracefully when SportsAPI has no data for a match
 - SportsAPI diagnostic coverage messages are hidden from viewers when no matching SportsAPI event exists
@@ -73,6 +76,8 @@ MATCH_API_KEY = your stream API key
 MATCH_API_URL = https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php
 SPORTS_API_KEY = your SportsAPI key
 SPORTS_API_BASE_URL = https://sports-api.net/api
+# Optional only if you want the heavier odds-first SportsAPI search:
+# SPORTS_API_RICH_MODE = 1
 ```
 
 `MATCH_API_KEY` and `SPORTS_API_KEY` should be added as secrets. Do not upload `.env`, `.dev.vars`, or real API keys to GitHub.
@@ -108,13 +113,13 @@ If `matched` is `false`, the stream match is not present in SportsAPI coverage. 
 
 ## How the SportsAPI enrichment works
 
-When a user opens a match, the Worker calls SportsAPI `/sportsbook` first because it can include events, main odds and inline mapped stats. If no match is found, it falls back to `/events/filter`, `/events/live` and `/events`. It compares event names with the stream match `home`, `away`, `category` and `league`, then fetches additional routes such as `/events/:id`, `/offers/:eventId`, `/group/:groupId` and statistics routes when SportsAPI exposes a usable stats ID.
+When a user opens a match, the Worker first checks lightweight SportsAPI event routes such as `/events/filter` and `/events/live`. If you enable `SPORTS_API_RICH_MODE=1`, it can also check `/sportsbook`, which may include events, main odds and inline mapped stats but is heavier. It compares event names with the stream match `home`, `away`, `category` and `league`, then fetches additional routes such as `/events/:id`, `/offers/:eventId`, `/group/:groupId` and statistics routes when SportsAPI exposes a usable stats ID.
 
 If SportsAPI cannot match a stream match or has no statistics/odds/lineups for that event, the site omits those public panels instead of showing diagnostic coverage text or fake values.
 
 ## Player notes
 
-The player tries sources in this order:
+The player never downloads or re-serves live video through Cloudflare. It gives the visitor browser the provider URL directly and tries sources in this order:
 
 1. Direct video files such as `.mp4`, `.webm`, `.ogg`
 2. DASH `.mpd` streams
@@ -128,3 +133,7 @@ If a stream source blocks CORS, requires DRM, blocks your domain/referrer, or re
 
 The site logo is served from `public/LOGO.PNG`. The favicon and Apple touch icon are served from `public/12.png`.
 
+
+## Cloudflare stream-load protection
+
+This version intentionally has no `/api/stream`, `/proxy`, `/hls` or media relay endpoint. If a request for a media file reaches your Worker by mistake, the Worker returns `410` and does not fetch the upstream stream. This protects your Cloudflare Worker from bandwidth/subrequest limits and keeps the stream traffic between the visitor and the provider URL.

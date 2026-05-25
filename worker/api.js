@@ -224,16 +224,43 @@ function normalizeMatch(match) {
 }
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url.toString(), {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': options.userAgent || 'ErosMacTV-cloudflare-worker/2.0',
-      ...(options.headers || {})
-    },
-    cf: options.cacheTtl
-      ? { cacheTtl: options.cacheTtl, cacheEverything: true }
-      : undefined
-  });
+  const timeoutMs = Number.isFinite(Number(options.timeoutMs)) ? Number(options.timeoutMs) : 8000;
+  const controller = new AbortController();
+  let abortListener = null;
+
+  const timer = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
+
+  if (options.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      abortListener = () => controller.abort();
+      options.signal.addEventListener('abort', abortListener, { once: true });
+    }
+  }
+
+  let response;
+  try {
+    response = await fetch(url.toString(), {
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': options.userAgent || 'ErosMacTV-cloudflare-worker/2.0',
+        ...(options.headers || {})
+      },
+      cf: options.cacheTtl
+        ? { cacheTtl: options.cacheTtl, cacheEverything: true }
+        : undefined
+    });
+  } catch (error) {
+    const err = new Error(error?.name === 'AbortError' ? 'The API request timed out.' : 'The API request failed before a response was returned.');
+    err.status = error?.name === 'AbortError' ? 504 : 502;
+    err.detail = error instanceof Error ? error.message : undefined;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    if (options.signal && abortListener) options.signal.removeEventListener('abort', abortListener);
+  }
 
   const text = await response.text();
   let payload;
@@ -357,11 +384,12 @@ function sportsRequest(env, path = DEFAULT_SPORTS_EVENTS_PATH) {
   return { url, key: config.key };
 }
 
-async function fetchSportsJson(env, path, { cacheTtl = 120 } = {}) {
+async function fetchSportsJson(env, path, { cacheTtl = 120, timeoutMs = 5000 } = {}) {
   const { url, key } = sportsRequest(env, path);
   return fetchJson(url, {
     cacheTtl,
-    userAgent: 'ErosMacTV-sports-enrichment/3.0',
+    timeoutMs,
+    userAgent: 'ErosMacTV-sports-enrichment/4.0',
     headers: {
       'X-API-Key': key
     }
@@ -372,8 +400,8 @@ async function fetchOptionalSportsJson(env, path, options = {}) {
   try {
     return await fetchSportsJson(env, path, options);
   } catch (error) {
-    // Auth, quota and configuration failures must be visible. Missing optional lanes can be skipped.
-    if ([401, 403, 429, 500].includes(Number(error?.status))) throw error;
+    // Sports data is enrichment only. It must never break the player or return
+    // Cloudflare 5xx responses when SportsAPI is slow, over quota or missing data.
     return null;
   }
 }
@@ -1140,48 +1168,58 @@ function dedupeSportsEvents(events = []) {
   return output;
 }
 
+function enabled(value) {
+  return /^(?:1|true|yes|on)$/i.test(cleanString(value));
+}
+
 async function loadSportsCandidates(env, match) {
-  // SportsAPI's /sportsbook is the richest lane: events + main odds + inline stats where mapped.
+  // Keep the default SportsAPI lane light. The old rich scan hit /sportsbook first,
+  // which can return very large payloads and make the Worker spend too much time
+  // before the player has even started. Rich sportsbook discovery can still be
+  // enabled with SPORTS_API_RICH_MODE=1, but it is off by default.
   const sport = sportsApiSport(match?.category);
-  const primaryPaths = [sportsPath('/sportsbook', sport ? { sport } : {})];
-  const fallbackPaths = [
-    sportsPath('/events/filter', sport ? { sport } : {}),
-    '/events/live',
-    DEFAULT_SPORTS_EVENTS_PATH
-  ];
+  const richMode = enabled(env.SPORTS_API_RICH_MODE);
+  const paths = richMode
+    ? [
+        sportsPath('/events/filter', sport ? { sport } : {}),
+        '/events/live',
+        sportsPath('/sportsbook', sport ? { sport } : {})
+      ]
+    : [
+        sportsPath('/events/filter', sport ? { sport } : {}),
+        '/events/live'
+      ];
 
   const payloads = [];
   const events = [];
   const sources = [];
 
-  async function addPath(path, cacheTtl = 120) {
+  async function addPath(path, cacheTtl = 120, timeoutMs = 4500) {
     if (!path || sources.includes(path)) return;
-    const payload = await fetchOptionalSportsJson(env, path, { cacheTtl });
+    const payload = await fetchOptionalSportsJson(env, path, { cacheTtl, timeoutMs });
     if (!payload) return;
     payloads.push(payload);
     sources.push(path);
     events.push(...unwrapEvents(payload));
   }
 
-  for (const path of primaryPaths) await addPath(path, 120);
-
-  let uniqueEvents = dedupeSportsEvents(events);
-  let matched = findBestSportsEvent(match, uniqueEvents);
-
-  // If the rich sportsbook lane has no matching event, try the lighter/listing lanes.
-  for (const path of fallbackPaths) {
-    if (matched) break;
-    await addPath(path, path.includes('/live') ? 30 : 120);
-    uniqueEvents = dedupeSportsEvents(events);
-    matched = findBestSportsEvent(match, uniqueEvents);
+  for (const path of paths) {
+    await addPath(path, path.includes('/live') ? 30 : 180, path.includes('/sportsbook') ? 5500 : 4500);
+    const uniqueEvents = dedupeSportsEvents(events);
+    const matched = findBestSportsEvent(match, uniqueEvents);
+    if (matched) {
+      return { payloads, events: uniqueEvents, matched, sources, sport, richMode };
+    }
   }
 
+  const uniqueEvents = dedupeSportsEvents(events);
   return {
     payloads,
     events: uniqueEvents,
-    matched,
+    matched: null,
     sources,
-    sport
+    sport,
+    richMode
   };
 }
 
@@ -1204,20 +1242,12 @@ export async function handleMatchDetails(request, env) {
         {
           success: true,
           matched: false,
-          message: 'SportsAPI did not return a matching event for this broadcast match. Stats, odds, timeline and lineups can only be shown when the same match exists in SportsAPI coverage.',
           event: null,
           stats: [],
           odds: [],
           timeline: [],
           lineups: null,
-          related: [],
-          coverage: {
-            source: 'sports-api.net',
-            checked_sources: candidates.sources,
-            checked_events: candidates.events.length,
-            requested: match,
-            sport: candidates.sport || null
-          }
+          related: []
         },
         200,
         { 'Cache-Control': 'public, max-age=30, s-maxage=90' }
@@ -1274,12 +1304,18 @@ export async function handleMatchDetails(request, env) {
   } catch (error) {
     return jsonResponse(
       {
-        success: false,
-        error: error instanceof Error ? error.message : 'Could not load sports data.',
-        detail: error?.detail || undefined
+        success: true,
+        matched: false,
+        event: null,
+        stats: [],
+        odds: [],
+        timeline: [],
+        lineups: null,
+        related: [],
+        silent: true
       },
-      error?.status || 502,
-      { 'Cache-Control': 'no-store' }
+      200,
+      { 'Cache-Control': 'public, max-age=20, s-maxage=60' }
     );
   }
 }

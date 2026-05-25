@@ -65,14 +65,14 @@ export async function fetchMatchDetails(match, { signal } = {}) {
     headers: {
       Accept: 'application/json'
     },
-    cache: 'no-store',
+    cache: 'default',
     signal
   });
 
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || !payload?.success) {
-    throw new Error(payload?.error || 'Could not load match data.');
+    return normalizeDetailsPayload({ success: true, matched: false });
   }
 
   return normalizeDetailsPayload(payload);

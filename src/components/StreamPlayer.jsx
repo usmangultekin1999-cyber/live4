@@ -11,15 +11,33 @@ function streamKind(url = '') {
   return 'hls';
 }
 
+function directStreamUrl(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw, window.location.href);
+
+    // Do not let relative stream manifests/segments hit our Cloudflare Worker.
+    // The provider must be used with its original absolute URL.
+    if (!/^https?:\/\//i.test(raw) && parsed.origin === window.location.origin) return '';
+    if (!/^https?:$/i.test(parsed.protocol)) return '';
+
+    return parsed.href;
+  } catch (error) {
+    return /^https?:\/\//i.test(raw) ? raw : '';
+  }
+}
+
 export default function StreamPlayer({ match, onClose, language }) {
   const videoRef = useRef(null);
   const iframeRef = useRef(null);
   const [mode, setMode] = useState('loading');
   const [message, setMessage] = useState('');
-  const [detailsStatus, setDetailsStatus] = useState('loading');
+  const [detailsStatus, setDetailsStatus] = useState('ready');
   const [details, setDetails] = useState(null);
   const [detailsError, setDetailsError] = useState('');
-  const streamUrl = useMemo(() => String(match?.videoid || '').trim(), [match]);
+  const streamUrl = useMemo(() => directStreamUrl(match?.videoid), [match]);
   const { time, league } = parseLeague(match?.league || '', language);
   const home = cleanDisplayText(match?.home, 'Home');
   const away = cleanDisplayText(match?.away, 'Away');
@@ -34,22 +52,30 @@ export default function StreamPlayer({ match, onClose, language }) {
     }
 
     const controller = new AbortController();
-    setDetailsStatus('loading');
-    setDetails(null);
-    setDetailsError('');
+    const timer = window.setTimeout(() => {
+      setDetailsStatus('loading');
+      setDetails(null);
+      setDetailsError('');
 
-    fetchMatchDetails(match, { signal: controller.signal })
-      .then((payload) => {
-        setDetails(payload);
-        setDetailsStatus('ready');
-      })
-      .catch((error) => {
-        if (error?.name === 'AbortError') return;
-        setDetailsStatus('error');
-        setDetailsError(error instanceof Error ? error.message : t(language, 'sportsDataError'));
-      });
+      fetchMatchDetails(match, { signal: controller.signal })
+        .then((payload) => {
+          setDetails(payload);
+          setDetailsStatus('ready');
+        })
+        .catch((error) => {
+          if (error?.name === 'AbortError') return;
+          // Sports data is optional enrichment. Never show an error block over
+          // the broadcast and never let a SportsAPI/Cloudflare failure affect playback.
+          setDetails(null);
+          setDetailsError('');
+          setDetailsStatus('ready');
+        });
+    }, 1500);
 
-    return () => controller.abort();
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [match?.id, match?.home, match?.away, match?.category, match?.league, language]);
 
   useEffect(() => {
