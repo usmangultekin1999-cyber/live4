@@ -878,6 +878,11 @@ a {
   overflow: hidden;
 }
 
+.insight-panel--notice {
+  border-color: rgba(255, 214, 98, 0.34);
+  background: linear-gradient(135deg, rgba(255, 214, 98, 0.09), rgba(18, 26, 41, 0.88));
+}
+
 .insight-heading {
   display: flex;
   align-items: center;
@@ -1233,4 +1238,49 @@ a {
   .odds-outcomes {
     grid-template-columns: 1fr;
   }
+}
+
+.insight-note {
+  margin: -0.35rem 1rem 1rem;
+  color: #c7d6ee;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.candidate-list {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 1rem 1rem;
+}
+
+.candidate-list h4 {
+  margin: 0.1rem 0 0.15rem;
+  color: #dfe8f8;
+  font-size: 0.84rem;
+}
+
+.candidate-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(151, 170, 203, 0.11);
+  border-radius: 10px;
+  background: rgba(7, 11, 19, 0.34);
+}
+
+.candidate-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.candidate-row strong {
+  color: var(--accent);
+  font-size: 0.76rem;
+  white-space: nowrap;
 }

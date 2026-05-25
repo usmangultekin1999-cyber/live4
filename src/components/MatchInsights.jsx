@@ -44,6 +44,21 @@ function EmptyLine({ children }) {
   return <p className="insight-empty">{children}</p>;
 }
 
+function CoverageNotice({ details, match, language }) {
+  if (details?.matched !== false) return null;
+
+  return (
+    <Panel title={t(language, 'sportsApiCoverage')} className="insight-panel--notice">
+      <EmptyLine>
+        {t(language, 'sportsApiNoMatch', {
+          home: cleanDisplayText(match?.home, 'Home'),
+          away: cleanDisplayText(match?.away, 'Away')
+        })}
+      </EmptyLine>
+    </Panel>
+  );
+}
+
 function EventInfo({ details, match, language }) {
   const event = details?.event || {};
   const home = cleanDisplayText(event.home || match.home, 'Home');
@@ -57,7 +72,7 @@ function EventInfo({ details, match, language }) {
   ].filter(([, value]) => value);
 
   return (
-    <Panel title={t(language, 'eventInfo')} badge={details?.matched ? t(language, 'apiMatched') : undefined}>
+    <Panel title={t(language, 'eventInfo')} badge={details?.matched ? t(language, 'apiMatched') : t(language, 'streamApiSource')}>
       <div className="event-card-mini">
         <div className="mini-team">
           <TeamLogo src={event.home_logo || match.home_icon} name={home} />
@@ -80,7 +95,7 @@ function EventInfo({ details, match, language }) {
           ))}
         </dl>
       ) : (
-        <EmptyLine>{t(language, 'noSportsData')}</EmptyLine>
+        <EmptyLine>{details?.matched === false ? t(language, 'sportsApiNoMatchShort') : t(language, 'noSportsData')}</EmptyLine>
       )}
     </Panel>
   );
@@ -227,6 +242,38 @@ function RelatedPanel({ related, language }) {
   );
 }
 
+
+function SportsApiCoveragePanel({ details, match, language }) {
+  const count = details?.coverage?.checked_events ?? details?.sportsApi?.eventsCount ?? 0;
+  const sources = Array.isArray(details?.coverage?.checked_sources) ? details.coverage.checked_sources : [];
+  const candidates = Array.isArray(details?.sportsApi?.topCandidates) ? details.sportsApi.topCandidates : [];
+
+  return (
+    <Panel title={t(language, 'sportsApiCoverage')} badge={t(language, 'notMatched')} className="insight-panel--notice">
+      <p className="insight-empty">
+        {t(language, 'sportsApiNoMatch', {
+          home: cleanDisplayText(match?.home, 'Home'),
+          away: cleanDisplayText(match?.away, 'Away')
+        })}
+      </p>
+      <p className="insight-note">{t(language, 'sportsApiEventsChecked', { count })}</p>
+      {sources.length > 0 && <p className="insight-note">{sources.join(' · ')}</p>}
+
+      {candidates.length > 0 && (
+        <div className="candidate-list">
+          <h4>{t(language, 'nearestSportsEvents')}</h4>
+          {candidates.map((candidate) => (
+            <div className="candidate-row" key={candidate.id}>
+              <span>{cleanDisplayText(candidate.event?.home, 'Home')} {t(language, 'vs')} {cleanDisplayText(candidate.event?.away, 'Away')}</span>
+              <strong>{t(language, 'matchScore')}: {candidate.score}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 export default function MatchInsights({ details, status, error, match, language }) {
   if (status === 'loading') {
     return (
@@ -250,9 +297,24 @@ export default function MatchInsights({ details, status, error, match, language 
 
   if (!details) return null;
 
+  if (details.matched === false) {
+    return (
+      <div className="match-insights">
+        <div className="insight-main">
+          <SportsApiCoveragePanel details={details} match={match} language={language} />
+        </div>
+
+        <aside className="insight-side">
+          <EventInfo details={details} match={match} language={language} />
+        </aside>
+      </div>
+    );
+  }
+
   return (
     <div className="match-insights">
       <div className="insight-main">
+        <CoverageNotice details={details} match={match} language={language} />
         <StatisticsPanel stats={details.stats || []} language={language} />
         <TimelinePanel timeline={details.timeline || []} language={language} />
         <LineupsPanel lineups={details.lineups} language={language} match={match} />

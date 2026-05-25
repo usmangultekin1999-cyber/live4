@@ -1,4 +1,4 @@
-import { handleMatches, handleMatchDetails, jsonResponse } from './api.js';
+import { handleMatches, handleMatchDetails, handleSportsStatus, jsonResponse } from './api.js';
 
 export default {
   async fetch(request, env) {
@@ -10,6 +10,10 @@ export default {
 
     if (url.pathname === '/api/match-details' && request.method === 'GET') {
       return handleMatchDetails(request, env);
+    }
+
+    if (url.pathname === '/api/sports-status' && request.method === 'GET') {
+      return handleSportsStatus(request, env);
     }
 
     if (url.pathname.startsWith('/api/')) {

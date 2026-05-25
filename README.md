@@ -7,7 +7,8 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 ## Changes in this version
 
 - Site name changed to `ErosMacTV` everywhere.
-- Added `/api/match-details`, which matches an opened stream match with SportsAPI events and pulls extra match data.
+- Added `/api/match-details`, which first checks SportsAPI `/api/sportsbook` and then falls back to event list routes to match an opened stream match and pull extra match data.
+- Added `/api/sports-status`, a safe debug endpoint that shows how many SportsAPI events were loaded and the nearest candidates for a stream match.
 - Added player detail panels: event info, statistics, odds, timeline, lineups and related matches.
 - Keeps the language selector for English, Turkish, German, Spanish, Chinese, Hindi and French.
 - Cleans upstream match/league text before rendering. Decorative HTML/CSS such as `<style>...</style><span>GÜNÜN MAÇI</span>` is stripped so it no longer appears on cards or player headings.
@@ -25,6 +26,7 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 - HLS, DASH, MP4 and WebM player support
 - Iframe fallback for embed-style stream URLs
 - Detail panels that hide gracefully when SportsAPI has no data for a match
+- Clear SportsAPI coverage message when a stream match is not present in SportsAPI `/sportsbook` or event list routes
 
 ## File structure
 
@@ -33,6 +35,7 @@ worker/api.js                    Shared Cloudflare API handlers
 worker/index.js                  Cloudflare Worker API router + static asset router
 functions/api/matches.js         Cloudflare Pages Functions fallback for match list
 functions/api/match-details.js   Cloudflare Pages Functions fallback for match details
+functions/api/sports-status.js   Cloudflare Pages Functions fallback for SportsAPI diagnostics
 src/App.jsx                      Main React application
 src/lib/i18n.js                  Language text and category translations
 src/lib/helpers.js               Text cleanup, parsing and formatting helpers
@@ -92,9 +95,19 @@ SPORTS_API_KEY="YOUR_SPORTS_API_KEY"
 SPORTS_API_BASE_URL="https://sports-api.net/api"
 ```
 
+## Checking SportsAPI coverage
+
+You can check whether SportsAPI contains a stream match by opening:
+
+```txt
+/api/sports-status?home=Megapolis%20FC&away=Victory%20FC&category=Football&league=09%3A00%20%7C%20Regional%20League.%20A
+```
+
+If `matched` is `false`, the stream match is not present in SportsAPI coverage. In that case the site cannot show real SportsAPI statistics, odds, timeline or lineups for that match.
+
 ## How the SportsAPI enrichment works
 
-When a user opens a match, the Worker calls SportsAPI `/events`, compares event names with the stream match `home`, `away`, `category` and `league`, then fetches additional routes such as `/events/:id`, `/offers/:eventId`, `/group/:groupId` and statistics routes when SportsAPI exposes a usable stats ID.
+When a user opens a match, the Worker calls SportsAPI `/sportsbook` first because it can include events, main odds and inline mapped stats. If no match is found, it falls back to `/events/filter`, `/events/live` and `/events`. It compares event names with the stream match `home`, `away`, `category` and `league`, then fetches additional routes such as `/events/:id`, `/offers/:eventId`, `/group/:groupId` and statistics routes when SportsAPI exposes a usable stats ID.
 
 If SportsAPI cannot match a stream match or has no statistics/odds/lineups for that event, the site shows a clean empty state instead of fake values.
 

@@ -87,6 +87,34 @@ const SPORT_ALIASES = new Map([
   ['rugby', 'rugby']
 ]);
 
+
+const SPORTS_API_SPORTS = new Map([
+  ['football', 'FOOTBALL'],
+  ['soccer', 'FOOTBALL'],
+  ['futbol', 'FOOTBALL'],
+  ['basketball', 'BASKETBALL'],
+  ['basketbol', 'BASKETBALL'],
+  ['tennis', 'TENNIS'],
+  ['tenis', 'TENNIS'],
+  ['badminton', 'BADMINTON'],
+  ['volleyball', 'VOLLEYBALL'],
+  ['beach volleyball', 'VOLLEYBALL'],
+  ['handball', 'HANDBALL'],
+  ['ice hockey', 'ICE_HOCKEY'],
+  ['hockey', 'ICE_HOCKEY'],
+  ['baseball', 'BASEBALL'],
+  ['cricket', 'CRICKET'],
+  ['futsal', 'FUTSAL'],
+  ['rugby', 'RUGBY'],
+  ['boxing', 'BOXING'],
+  ['mma', 'MMA'],
+  ['darts', 'DARTS'],
+  ['golf', 'GOLF'],
+  ['table tennis', 'TABLE_TENNIS']
+]);
+
+const VIRTUAL_SPORT_HINTS = /\b(?:fifa|pes|efootball|fc\s*\d{2}|nba\s*2k|nba2k|espor|e-spor|esports|mortal\s+kombat|guilty\s+gear|king\s+of\s+fighters|street\s+fighter|ufc\s*\d|nhl\s*\d{2}|vca\s*\d{2}|imagic|subway\s+surfer|power\s+of\s+power)\b/i;
+
 function jsonResponse(payload, status = 200, headers = {}) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -308,7 +336,7 @@ function getSportsConfig(env) {
   return { key, baseUrl: baseUrl.replace(/\/+$/g, ''), eventsUrl };
 }
 
-function sportsUrl(env, path = DEFAULT_SPORTS_EVENTS_PATH) {
+function sportsRequest(env, path = DEFAULT_SPORTS_EVENTS_PATH) {
   const config = getSportsConfig(env);
   if (!config.key) {
     const err = new Error('SPORTS_API_KEY is not defined as a Cloudflare environment variable.');
@@ -316,22 +344,27 @@ function sportsUrl(env, path = DEFAULT_SPORTS_EVENTS_PATH) {
     throw err;
   }
 
+  let url;
   if (path === DEFAULT_SPORTS_EVENTS_PATH && config.eventsUrl) {
-    const url = new URL(config.eventsUrl);
-    url.searchParams.set('api_key', config.key);
-    return url;
+    url = new URL(config.eventsUrl);
+  } else {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    url = new URL(`${config.baseUrl}${cleanPath}`);
   }
 
-  const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  const url = new URL(`${config.baseUrl}${cleanPath}`);
-  url.searchParams.set('api_key', config.key);
-  return url;
+  // Keep the key out of logs, cache keys and browser-visible URLs. SportsAPI accepts X-API-Key.
+  url.searchParams.delete('api_key');
+  return { url, key: config.key };
 }
 
 async function fetchSportsJson(env, path, { cacheTtl = 120 } = {}) {
-  return fetchJson(sportsUrl(env, path), {
+  const { url, key } = sportsRequest(env, path);
+  return fetchJson(url, {
     cacheTtl,
-    userAgent: 'ErosMacTV-sports-enrichment/2.0'
+    userAgent: 'ErosMacTV-sports-enrichment/3.0',
+    headers: {
+      'X-API-Key': key
+    }
   });
 }
 
@@ -339,6 +372,8 @@ async function fetchOptionalSportsJson(env, path, options = {}) {
   try {
     return await fetchSportsJson(env, path, options);
   } catch (error) {
+    // Auth, quota and configuration failures must be visible. Missing optional lanes can be skipped.
+    if ([401, 403, 429, 500].includes(Number(error?.status))) throw error;
     return null;
   }
 }
@@ -350,6 +385,10 @@ function unwrapEvents(payload) {
   if (Array.isArray(payload.data)) return payload.data;
   if (Array.isArray(payload.items)) return payload.items;
   if (Array.isArray(payload.results)) return payload.results;
+  if (Array.isArray(payload?.data?.events)) return payload.data.events;
+  if (Array.isArray(payload?.payload?.events)) return payload.payload.events;
+  if (Array.isArray(payload?.sportsbook?.events)) return payload.sportsbook.events;
+  if (Array.isArray(payload?.snapshot?.events)) return payload.snapshot.events;
   return [];
 }
 
@@ -388,6 +427,24 @@ function parseIsoOrTimestamp(value) {
 function normalizeSport(value = '') {
   const lookup = normalizeLookup(value).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
   return SPORT_ALIASES.get(lookup) || lookup;
+}
+
+function sportsApiSport(value = '') {
+  const normalized = normalizeSport(value);
+  return SPORTS_API_SPORTS.get(normalized) || SPORTS_API_SPORTS.get(normalizeLookup(value)) || '';
+}
+
+function isVirtualStreamMatch(match = {}) {
+  const haystack = `${match?.category || ''} ${match?.league || ''}`;
+  return VIRTUAL_SPORT_HINTS.test(haystack);
+}
+
+function sportsPath(path, params = {}) {
+  const url = new URL(`https://erosmactv.invalid${path.startsWith('/') ? path : `/${path}`}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && String(value).trim() !== '') url.searchParams.set(key, String(value));
+  }
+  return `${url.pathname}${url.search}`;
 }
 
 function parseLeagueTime(league = '') {
@@ -466,8 +523,19 @@ function eventScore(match, event) {
 
   const matchSport = normalizeSport(match?.category);
   const eventSport = normalizeSport(pick(event, ['sport', 'sportName', 'category']));
-  if (matchSport && eventSport && (matchSport === eventSport || matchSport.includes(eventSport) || eventSport.includes(matchSport))) {
-    score += 0.24;
+  const streamLooksVirtual = isVirtualStreamMatch(match);
+
+  if (streamLooksVirtual && !['esports', 'fifa', 'pes', 'nba2k'].includes(eventSport)) {
+    return { score: 0, reversed: false };
+  }
+
+  if (matchSport && eventSport) {
+    if (matchSport === eventSport || matchSport.includes(eventSport) || eventSport.includes(matchSport)) {
+      score += 0.28;
+    } else if (!streamLooksVirtual) {
+      // Real football/basketball/etc. should not be matched to a different sport just because names overlap.
+      score -= 0.32;
+    }
   }
 
   const league = normalizeLookup(match?.league);
@@ -841,6 +909,70 @@ function buildFallbackRelated(allEvents, matchedEvent) {
     .slice(0, 8);
 }
 
+
+function eventSignature(event = {}) {
+  const id = extractEventId(event);
+  if (id) return `id:${id}`;
+  return `teams:${normalizeTeamName(eventHome(event))}:${normalizeTeamName(eventAway(event))}:${cleanString(pick(event, ['start', 'startTime', 'start_at', 'date']))}`;
+}
+
+function dedupeSportsEvents(events = []) {
+  const seen = new Set();
+  const output = [];
+  for (const event of events) {
+    const key = eventSignature(event);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    output.push(event);
+  }
+  return output;
+}
+
+async function loadSportsCandidates(env, match) {
+  // SportsAPI's /sportsbook is the richest lane: events + main odds + inline stats where mapped.
+  const sport = sportsApiSport(match?.category);
+  const primaryPaths = [sportsPath('/sportsbook', sport ? { sport } : {})];
+  const fallbackPaths = [
+    sportsPath('/events/filter', sport ? { sport } : {}),
+    '/events/live',
+    DEFAULT_SPORTS_EVENTS_PATH
+  ];
+
+  const payloads = [];
+  const events = [];
+  const sources = [];
+
+  async function addPath(path, cacheTtl = 120) {
+    if (!path || sources.includes(path)) return;
+    const payload = await fetchOptionalSportsJson(env, path, { cacheTtl });
+    if (!payload) return;
+    payloads.push(payload);
+    sources.push(path);
+    events.push(...unwrapEvents(payload));
+  }
+
+  for (const path of primaryPaths) await addPath(path, 120);
+
+  let uniqueEvents = dedupeSportsEvents(events);
+  let matched = findBestSportsEvent(match, uniqueEvents);
+
+  // If the rich sportsbook lane has no matching event, try the lighter/listing lanes.
+  for (const path of fallbackPaths) {
+    if (matched) break;
+    await addPath(path, path.includes('/live') ? 30 : 120);
+    uniqueEvents = dedupeSportsEvents(events);
+    matched = findBestSportsEvent(match, uniqueEvents);
+  }
+
+  return {
+    payloads,
+    events: uniqueEvents,
+    matched,
+    sources,
+    sport
+  };
+}
+
 export async function handleMatchDetails(request, env) {
   const url = new URL(request.url);
   const match = {
@@ -852,22 +984,28 @@ export async function handleMatchDetails(request, env) {
   };
 
   try {
-    const eventsPayload = await fetchSportsJson(env, DEFAULT_SPORTS_EVENTS_PATH, { cacheTtl: 120 });
-    const events = unwrapEvents(eventsPayload);
-    const matched = findBestSportsEvent(match, events);
+    const candidates = await loadSportsCandidates(env, match);
+    const matched = candidates.matched;
 
     if (!matched) {
       return jsonResponse(
         {
           success: true,
           matched: false,
-          message: 'No matching sports data event was found for this stream match.',
+          message: 'SportsAPI did not return a matching event for this broadcast match. Stats, odds, timeline and lineups can only be shown when the same match exists in SportsAPI coverage.',
           event: null,
           stats: [],
           odds: [],
           timeline: [],
           lineups: null,
-          related: []
+          related: [],
+          coverage: {
+            source: 'sports-api.net',
+            checked_sources: candidates.sources,
+            checked_events: candidates.events.length,
+            requested: match,
+            sport: candidates.sport || null
+          }
         },
         200,
         { 'Cache-Control': 'public, max-age=30, s-maxage=90' }
@@ -906,11 +1044,17 @@ export async function handleMatchDetails(request, env) {
         confidence: Number(matched.score.toFixed(2)),
         source: 'sports-api.net',
         event: enrichedEvent,
-        stats: normalizeStats(liveStats, fullStats, detailRoot),
+        stats: normalizeStats(liveStats, fullStats, detailRoot, matched.event),
         odds: normalizeOdds(offers, detailRoot, matched.event),
-        timeline: normalizeTimeline(liveStats, fullStats, detailRoot),
-        lineups: normalizeLineups(lineupsPayload, fullStats, detailRoot),
-        related: related.length ? related : buildFallbackRelated(events, matched.event)
+        timeline: normalizeTimeline(liveStats, fullStats, detailRoot, matched.event),
+        lineups: normalizeLineups(lineupsPayload, fullStats, detailRoot, matched.event),
+        related: related.length ? related : buildFallbackRelated(candidates.events, matched.event),
+        coverage: {
+          source: 'sports-api.net',
+          checked_sources: candidates.sources,
+          checked_events: candidates.events.length,
+          sport: candidates.sport || null
+        }
       },
       200,
       { 'Cache-Control': 'public, max-age=30, s-maxage=90' }
@@ -921,6 +1065,64 @@ export async function handleMatchDetails(request, env) {
         success: false,
         error: error instanceof Error ? error.message : 'Could not load sports data.',
         detail: error?.detail || undefined
+      },
+      error?.status || 502,
+      { 'Cache-Control': 'no-store' }
+    );
+  }
+}
+
+
+export async function handleSportsStatus(request, env) {
+  const url = new URL(request.url);
+  const q = cleanDisplayText(url.searchParams.get('q') || url.searchParams.get('query'));
+  const match = {
+    id: cleanDisplayText(url.searchParams.get('match_id') || url.searchParams.get('id')),
+    home: cleanDisplayText(url.searchParams.get('home') || q, 'Home'),
+    away: cleanDisplayText(url.searchParams.get('away')),
+    category: cleanDisplayText(url.searchParams.get('category')),
+    league: cleanDisplayText(url.searchParams.get('league'))
+  };
+
+  try {
+    const candidates = await loadSportsCandidates(env, match);
+    const normalized = candidates.events.map(normalizeEvent).filter((event) => event.id);
+    const hasSpecificMatch = Boolean(url.searchParams.get('home') && url.searchParams.get('away'));
+
+    let results = normalized;
+    if (q && !hasSpecificMatch) {
+      results = normalized
+        .map((event) => {
+          const haystack = `${event.home} ${event.away} ${event.name || ''} ${event.group || ''} ${event.sport || ''}`;
+          const score = Math.max(tokenScore(q, haystack), normalizeLookup(haystack).includes(normalizeLookup(q)) ? 1 : 0);
+          return { ...event, score: Number(score.toFixed(2)) };
+        })
+        .filter((event) => event.score > 0)
+        .sort((a, b) => b.score - a.score);
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        source: 'sports-api.net',
+        count: normalized.length,
+        checked_sources: candidates.sources,
+        matched: hasSpecificMatch ? Boolean(candidates.matched) : undefined,
+        match: hasSpecificMatch ? match : undefined,
+        best: hasSpecificMatch && candidates.matched
+          ? { score: Number(candidates.matched.score.toFixed(2)), event: normalizeEvent(candidates.matched.event) }
+          : undefined,
+        query: q || undefined,
+        data: results.slice(0, 40)
+      },
+      200,
+      { 'Cache-Control': 'public, max-age=30, s-maxage=60' }
+    );
+  } catch (error) {
+    return jsonResponse(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Could not load Sports API status.'
       },
       error?.status || 502,
       { 'Cache-Control': 'no-store' }
