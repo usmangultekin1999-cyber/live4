@@ -251,48 +251,50 @@ export default function App() {
           language={language}
         />
 
-        <CategoryBar
-          categories={categories}
-          activeCategory={activeCategory}
-          onChange={setActiveCategory}
-          language={language}
-        />
+        <div className="main-layout">
+          <CategoryBar
+            categories={categories}
+            activeCategory={activeCategory}
+            onChange={setActiveCategory}
+            language={language}
+          />
 
-        <section className="content-wrap" aria-live="polite">
-          {status === 'loading' && <SkeletonGrid />}
+          <section className="content-wrap" aria-live="polite">
+            {status === 'loading' && <SkeletonGrid />}
 
-          {status === 'error' && (
-            <ErrorState message={error} onRetry={() => loadMatches()} language={language} />
-          )}
+            {status === 'error' && (
+              <ErrorState message={error} onRetry={() => loadMatches()} language={language} />
+            )}
 
-          {status === 'ready' && filteredMatches.length === 0 && (
-            <EmptyState
-              hasQuery={Boolean(query || activeCategory !== ALL_CATEGORY)}
-              onClear={clearFilters}
-              language={language}
-            />
-          )}
+            {status === 'ready' && filteredMatches.length === 0 && (
+              <EmptyState
+                hasQuery={Boolean(query || activeCategory !== ALL_CATEGORY)}
+                onClear={clearFilters}
+                language={language}
+              />
+            )}
 
-          {status === 'ready' && filteredMatches.length > 0 && groupedMatches.map(([category, items]) => (
-            <section className="match-section" key={category}>
-              <div className="section-heading">
-                <h2>{translateCategory(category, language)}</h2>
-                <span>{items.length} {matchWord(language, items.length)}</span>
-              </div>
+            {status === 'ready' && filteredMatches.length > 0 && groupedMatches.map(([category, items]) => (
+              <section className="match-section" key={category}>
+                <div className="section-heading">
+                  <h2>{translateCategory(category, language)}</h2>
+                  <span>{items.length} {matchWord(language, items.length)}</span>
+                </div>
 
-              <div className="match-grid">
-                {items.map((match) => (
-                  <MatchCard
-                    key={match.id}
-                    match={match}
-                    onOpen={openMatch}
-                    language={language}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </section>
+                <div className="match-grid">
+                  {items.map((match) => (
+                    <MatchCard
+                      key={match.id}
+                      match={match}
+                      onOpen={openMatch}
+                      language={language}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </section>
+        </div>
       </main>
 
       {activeMatch && <StreamPlayer match={activeMatch} onClose={closeMatch} language={language} />}

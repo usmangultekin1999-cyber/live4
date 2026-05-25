@@ -6,7 +6,8 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 
 ## Changes in this version
 
-- Site name changed to `ErosMacTV` everywhere.
+- Site name remains `ErosMacTV` everywhere, including the header.
+- Category filters are now a vertical left sidebar. Telegram and X/Twitter links are shown at the top of the sidebar.
 - Added `/api/match-details`, which first checks SportsAPI `/api/sportsbook` and then falls back to event list routes to match an opened stream match and pull extra match data.
 - Added `/api/sports-status`, a safe debug endpoint that shows how many SportsAPI events were loaded and the nearest candidates for a stream match.
 - Added player detail panels: event info, statistics, odds, timeline, lineups and related matches.
@@ -25,8 +26,8 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 - Responsive match cards
 - HLS, DASH, MP4 and WebM player support
 - Iframe fallback for embed-style stream URLs
-- Detail panels that hide gracefully when SportsAPI has no data for a match
-- Clear SportsAPI coverage message when a stream match is not present in SportsAPI `/sportsbook` or event list routes
+- Detail panels hide gracefully when SportsAPI has no data for a match
+- SportsAPI diagnostic coverage messages are hidden from viewers when no matching SportsAPI event exists
 
 ## File structure
 
@@ -103,13 +104,13 @@ You can check whether SportsAPI contains a stream match by opening:
 /api/sports-status?home=Megapolis%20FC&away=Victory%20FC&category=Football&league=09%3A00%20%7C%20Regional%20League.%20A
 ```
 
-If `matched` is `false`, the stream match is not present in SportsAPI coverage. In that case the site cannot show real SportsAPI statistics, odds, timeline or lineups for that match.
+If `matched` is `false`, the stream match is not present in SportsAPI coverage. The public player hides SportsAPI diagnostic text and simply omits the extra data panels for that match.
 
 ## How the SportsAPI enrichment works
 
 When a user opens a match, the Worker calls SportsAPI `/sportsbook` first because it can include events, main odds and inline mapped stats. If no match is found, it falls back to `/events/filter`, `/events/live` and `/events`. It compares event names with the stream match `home`, `away`, `category` and `league`, then fetches additional routes such as `/events/:id`, `/offers/:eventId`, `/group/:groupId` and statistics routes when SportsAPI exposes a usable stats ID.
 
-If SportsAPI cannot match a stream match or has no statistics/odds/lineups for that event, the site shows a clean empty state instead of fake values.
+If SportsAPI cannot match a stream match or has no statistics/odds/lineups for that event, the site omits those public panels instead of showing diagnostic coverage text or fake values.
 
 ## Player notes
 

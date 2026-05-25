@@ -1,25 +1,62 @@
 import { t } from '../lib/i18n.js';
 
+const SOCIAL_LINKS = [
+  {
+    label: 'Telegram',
+    shortUrl: 't.me/erosmactv3',
+    href: 'https://t.me/erosmactv3',
+    icon: '✈'
+  },
+  {
+    label: 'X / Twitter',
+    shortUrl: 'x.com/erosmactv',
+    href: 'https://x.com/erosmactv',
+    icon: '𝕏'
+  }
+];
+
 export default function CategoryBar({ categories, activeCategory, onChange, language }) {
   return (
-    <nav className="category-shell" aria-label={t(language, 'categoriesAria')}>
-      <div className="category-track">
-        {categories.map((category) => {
-          const active = category.id === activeCategory;
-
-          return (
-            <button
-              key={category.id}
-              type="button"
-              className={`category-pill ${active ? 'is-active' : ''}`}
-              onClick={() => onChange(category.id)}
+    <aside className="category-shell" aria-label={t(language, 'categoriesAria')}>
+      <div className="category-socials">
+        <p>{t(language, 'socialTitle')}</p>
+        <div className="social-link-list">
+          {SOCIAL_LINKS.map((link) => (
+            <a
+              key={link.href}
+              className="social-link"
+              href={link.href}
+              target="_blank"
+              rel="noreferrer noopener"
             >
-              <span>{category.label}</span>
-              <small>{category.count}</small>
-            </button>
-          );
-        })}
+              <span aria-hidden="true">{link.icon}</span>
+              <strong>{link.label}</strong>
+              <small>{link.shortUrl}</small>
+            </a>
+          ))}
+        </div>
       </div>
-    </nav>
+
+      <nav className="category-nav" aria-label={t(language, 'categoriesAria')}>
+        <p>{t(language, 'categoriesTitle')}</p>
+        <div className="category-track">
+          {categories.map((category) => {
+            const active = category.id === activeCategory;
+
+            return (
+              <button
+                key={category.id}
+                type="button"
+                className={`category-pill ${active ? 'is-active' : ''}`}
+                onClick={() => onChange(category.id)}
+              >
+                <span>{category.label}</span>
+                <small>{category.count}</small>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+    </aside>
   );
 }
