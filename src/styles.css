@@ -1454,3 +1454,13 @@ a {
 }
 
 @media (max-width: 560px) { .brand-logo { width: 148px; max-height: 44px; } }
+
+.match-insights--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.match-insights--single .insight-side {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: start;
+}

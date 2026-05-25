@@ -630,23 +630,118 @@ function displayValue(value) {
   return cleanDisplayText(value, '—');
 }
 
+function titleCaseText(value = '') {
+  return cleanDisplayText(value, '')
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+
+function normalizeOutcomeName(value = '') {
+  const text = cleanDisplayText(value, '');
+  if (!text) return '';
+
+  const code = text.toUpperCase().replace(/[\s-]+/g, '_');
+  const codeMap = new Map([
+    ['OT_ONE', '1'],
+    ['OT_1', '1'],
+    ['ONE', '1'],
+    ['HOME', '1'],
+    ['OT_CROSS', 'X'],
+    ['OT_X', 'X'],
+    ['CROSS', 'X'],
+    ['DRAW', 'X'],
+    ['OT_DRAW', 'X'],
+    ['OT_TWO', '2'],
+    ['OT_2', '2'],
+    ['TWO', '2'],
+    ['AWAY', '2'],
+    ['YES', 'Yes'],
+    ['NO', 'No'],
+    ['OVER', 'Over'],
+    ['UNDER', 'Under']
+  ]);
+
+  if (codeMap.has(code)) return codeMap.get(code);
+  if (/^OT_(OVER|UNDER)_?\d*(?:_\d+)?$/i.test(code)) {
+    return code.replace(/^OT_/, '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  // Raw sportsbook enum values should not leak into the UI.
+  if (/^[A-Z]{2,}_[A-Z0-9_]+$/.test(code)) return '';
+
+  return text;
+}
+
 function getOutcomeName(outcome = {}) {
   const participant = outcome.participant || outcome.team || outcome.selection || outcome.player;
   if (isPlainObject(participant)) {
-    return cleanDisplayText(pick(participant, ['name', 'english_name', 'label', 'title']));
+    const participantName = normalizeOutcomeName(pick(participant, ['name', 'english_name', 'label', 'title']));
+    if (participantName) return participantName;
   }
-  return cleanDisplayText(pick(outcome, ['name', 'label', 'title', 'type', 'selectionName', 'outcomeName', 'description']), 'Selection');
+
+  return normalizeOutcomeName(pick(outcome, ['name', 'label', 'title', 'selectionName', 'outcomeName', 'description', 'type'])) || 'Selection';
+}
+
+function rawNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return null;
+
+  const text = value.trim();
+  if (!text || /[a-z]/i.test(text.replace(/[eE][+-]?\d+$/, ''))) return null;
+  const match = text.replace(/\s+/g, '').replace(',', '.').match(/-?\d+(?:\.\d+)?/);
+  return match ? Number.parseFloat(match[0]) : null;
+}
+
+function formatDecimalOdds(value) {
+  let number = rawNumber(value);
+  if (number === null || !Number.isFinite(number)) return '';
+
+  // SportsAPI returns many bookmaker prices as milliodds: 4900 = 4.90, 1360 = 1.36.
+  // Convert those to normal decimal odds before they reach the UI.
+  const valueText = String(value ?? '').trim();
+  const integerLike = /^-?\d+$/.test(valueText) || Number.isInteger(number);
+  if (integerLike && Math.abs(number) >= 1000) number /= 1000;
+  else if (integerLike && Math.abs(number) > 100) number /= 100;
+
+  if (number <= 1 || number > 500) return '';
+  return number.toFixed(2);
 }
 
 function getOddsValue(outcome = {}) {
-  const keys = ['decimalOdds', 'decimal_odds', 'odds', 'price', 'value', 'coefficient', 'coef', 'oddsDecimal'];
-  for (const key of keys) {
-    const value = outcome[key];
-    if (value !== undefined && value !== null && String(value).trim() !== '') return displayValue(value);
+  const candidates = [];
+  const keys = ['decimalOdds', 'decimal_odds', 'oddsDecimal', 'coefficient', 'coef', 'odds'];
+
+  for (const key of keys) candidates.push(outcome[key]);
+
+  if (isPlainObject(outcome.price)) {
+    candidates.push(outcome.price.decimal, outcome.price.decimalOdds, outcome.price.odds, outcome.price.value);
+  } else {
+    candidates.push(outcome.price);
   }
 
-  if (outcome.price?.decimal) return displayValue(outcome.price.decimal);
+  // Some APIs use `value` for the odds price, while others use it for enum codes such as OT_ONE.
+  // Only accept it when it is actually numeric.
+  if (rawNumber(outcome.value) !== null) candidates.push(outcome.value);
+
+  for (const candidate of candidates) {
+    const formatted = formatDecimalOdds(candidate);
+    if (formatted) return formatted;
+  }
+
   return '';
+}
+
+function isMarketCandidate(candidate) {
+  if (!isPlainObject(candidate)) return false;
+  return Boolean(
+    Array.isArray(candidate.outcomes) ||
+    Array.isArray(candidate.selections) ||
+    Array.isArray(candidate.options) ||
+    Array.isArray(candidate.prices) ||
+    Array.isArray(candidate.lines)
+  );
 }
 
 function normalizeMarket(rawMarket = {}) {
@@ -674,13 +769,13 @@ function normalizeOdds(...payloads) {
     if (!payload) continue;
 
     const directCandidates = [];
-    if (Array.isArray(payload)) directCandidates.push(...payload);
-    if (Array.isArray(payload.offers)) directCandidates.push(...payload.offers);
-    if (Array.isArray(payload.betOffers)) directCandidates.push(...payload.betOffers);
-    if (Array.isArray(payload.markets)) directCandidates.push(...payload.markets);
-    if (Array.isArray(payload.data)) directCandidates.push(...payload.data);
-    if (payload.mainBetOffer) directCandidates.push(payload.mainBetOffer);
-    if (payload.offer) directCandidates.push(payload.offer);
+    if (Array.isArray(payload)) directCandidates.push(...payload.filter(isMarketCandidate));
+    if (Array.isArray(payload.offers)) directCandidates.push(...payload.offers.filter(isMarketCandidate));
+    if (Array.isArray(payload.betOffers)) directCandidates.push(...payload.betOffers.filter(isMarketCandidate));
+    if (Array.isArray(payload.markets)) directCandidates.push(...payload.markets.filter(isMarketCandidate));
+    if (Array.isArray(payload.data)) directCandidates.push(...payload.data.filter(isMarketCandidate));
+    if (isMarketCandidate(payload.mainBetOffer)) directCandidates.push(payload.mainBetOffer);
+    if (isMarketCandidate(payload.offer)) directCandidates.push(payload.offer);
 
     for (const candidate of directCandidates) {
       const market = normalizeMarket(candidate);
@@ -688,7 +783,7 @@ function normalizeOdds(...payloads) {
     }
 
     if (!markets.length) {
-      const arrays = collectArrays(payload, (item) => Array.isArray(item.outcomes) || Array.isArray(item.selections));
+      const arrays = collectArrays(payload, (item) => isMarketCandidate(item));
       for (const array of arrays.slice(0, 3)) {
         for (const item of array.slice(0, 6)) {
           const market = normalizeMarket(item);
@@ -707,18 +802,57 @@ function normalizeOdds(...payloads) {
   }).slice(0, 6);
 }
 
+function normalizedKeyText(value = '') {
+  return normalizeLookup(cleanDisplayText(value, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' '));
+}
+
 function normalizeStatName(name = '') {
-  const label = cleanDisplayText(name, '').toLowerCase();
-  if (!label) return '';
-  if (label.includes('possess')) return 'Possession';
-  if (label.includes('shot') && label.includes('target')) return 'Shots on target';
-  if (label.includes('shot')) return 'Shots';
-  if (label.includes('corner')) return 'Corners';
-  if (label.includes('card')) return 'Cards';
-  if (label.includes('foul')) return 'Fouls';
-  if (label.includes('offside')) return 'Offsides';
-  if (label.includes('save')) return 'Saves';
-  return cleanDisplayText(name, 'Stat');
+  const key = normalizedKeyText(name);
+  if (!key) return '';
+
+  // Do not show team profile / standings fields as live match statistics.
+  if (/\b(?:team id|teamid|team name|teamname|participant id|participant name|wins?|draws?|losses?|played|form|rank|ranking|position|standing|standings|season|league id|group id|country|code|slug|logo|image|name|id)\b/.test(key)) {
+    return '';
+  }
+
+  if (key.includes('possess') || key.includes('ball possession')) return 'Possession';
+  if (key.includes('shot') && (key.includes('target') || key.includes('on goal'))) return 'Shots on target';
+  if (key.includes('shot')) return 'Shots';
+  if (key.includes('corner')) return 'Corners';
+  if (key.includes('yellow') && key.includes('card')) return 'Yellow cards';
+  if (key.includes('red') && key.includes('card')) return 'Red cards';
+  if (key.includes('card')) return 'Cards';
+  if (key.includes('foul')) return 'Fouls';
+  if (key.includes('offside')) return 'Offsides';
+  if (key.includes('save')) return 'Saves';
+  if (key.includes('dangerous') && key.includes('attack')) return 'Dangerous attacks';
+  if (key === 'attacks' || key.includes('attack')) return 'Attacks';
+  if (key.includes('penalt')) return 'Penalties';
+  if (key.includes('xg') || key.includes('expected goal')) return 'Expected goals';
+  if (key.includes('ace')) return 'Aces';
+  if (key.includes('double fault')) return 'Double faults';
+  if (key.includes('first serve')) return 'First serve';
+  if (key.includes('second serve')) return 'Second serve';
+  if (key.includes('break point')) return 'Break points';
+  if (key.includes('field goal')) return 'Field goals';
+  if (key.includes('three point') || key.includes('3 point')) return '3 pointers';
+  if (key.includes('free throw')) return 'Free throws';
+  if (key.includes('rebound')) return 'Rebounds';
+  if (key.includes('assist')) return 'Assists';
+  if (key.includes('turnover')) return 'Turnovers';
+  if (key.includes('steal')) return 'Steals';
+  if (key.includes('block')) return 'Blocks';
+
+  return '';
+}
+
+function isStatValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return true;
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'object') return false;
+  const text = cleanDisplayText(value, '');
+  if (!text || text === '—') return false;
+  return /^-?\d+(?:[.,]\d+)?%?$/.test(text);
 }
 
 function statFromObject(item = {}) {
@@ -726,7 +860,7 @@ function statFromObject(item = {}) {
   const home = pick(item, ['home', 'homeValue', 'home_value', 'homeTeam', 'local', 'team1', 'home_total']);
   const away = pick(item, ['away', 'awayValue', 'away_value', 'awayTeam', 'visitor', 'team2', 'away_total']);
 
-  if (!label || home === '' || away === '') return null;
+  if (!label || home === '' || away === '' || !isStatValue(home) || !isStatValue(away)) return null;
   return { label, home: displayValue(home), away: displayValue(away) };
 }
 
@@ -738,11 +872,14 @@ function objectStatRows(value) {
   if (isPlainObject(home) && isPlainObject(away)) {
     const keys = new Set([...Object.keys(home), ...Object.keys(away)]);
     for (const key of keys) {
+      const label = normalizeStatName(key);
+      if (!label) continue;
+
       const left = home[key];
       const right = away[key];
       if (left === undefined || right === undefined) continue;
-      if (typeof left === 'object' || typeof right === 'object') continue;
-      rows.push({ label: normalizeStatName(key), home: displayValue(left), away: displayValue(right) });
+      if (!isStatValue(left) || !isStatValue(right)) continue;
+      rows.push({ label, home: displayValue(left), away: displayValue(right) });
     }
   }
 
@@ -759,9 +896,10 @@ function normalizeStats(...payloads) {
     for (const row of objectStatRows(payload.statistics || payload.stats || payload.data || {})) rows.push(row);
 
     const arrays = collectArrays(payload, (item) => {
-      return Boolean(pick(item, ['name', 'label', 'title', 'type', 'stat', 'key'])) && (
-        pick(item, ['home', 'homeValue', 'home_value', 'homeTeam', 'local', 'team1', 'home_total']) !== '' ||
-        pick(item, ['away', 'awayValue', 'away_value', 'awayTeam', 'visitor', 'team2', 'away_total']) !== ''
+      const label = normalizeStatName(pick(item, ['name', 'label', 'title', 'type', 'stat', 'key']));
+      return Boolean(label) && (
+        isStatValue(pick(item, ['home', 'homeValue', 'home_value', 'homeTeam', 'local', 'team1', 'home_total'])) ||
+        isStatValue(pick(item, ['away', 'awayValue', 'away_value', 'awayTeam', 'visitor', 'team2', 'away_total']))
       );
     });
 
@@ -773,11 +911,16 @@ function normalizeStats(...payloads) {
     }
   }
 
-  const preferred = ['Possession', 'Shots', 'Shots on target', 'Corners', 'Cards', 'Fouls', 'Offsides', 'Saves'];
+  const preferred = [
+    'Possession', 'Shots', 'Shots on target', 'Corners', 'Yellow cards', 'Red cards', 'Cards',
+    'Fouls', 'Offsides', 'Saves', 'Dangerous attacks', 'Attacks', 'Penalties', 'Expected goals',
+    'Aces', 'Double faults', 'First serve', 'Second serve', 'Break points',
+    'Field goals', '3 pointers', 'Free throws', 'Rebounds', 'Assists', 'Turnovers', 'Steals', 'Blocks'
+  ];
   const seen = new Set();
   const cleanRows = rows.filter((row) => {
     const key = row.label.toLowerCase();
-    if (seen.has(key)) return false;
+    if (!row.label || seen.has(key)) return false;
     seen.add(key);
     return row.home !== '—' || row.away !== '—';
   });
@@ -795,28 +938,97 @@ function normalizeStats(...payloads) {
 }
 
 function minuteFromItem(item = {}) {
-  const raw = pick(item, ['minute', 'min', 'time', 'matchTime', 'elapsed', 'clock']);
-  if (raw === '') return '';
+  const raw = pick(item, ['minute', 'min', 'matchMinute', 'elapsed', 'clock', 'matchTime', 'time']);
+  if (raw === '' || raw === null || raw === undefined || typeof raw === 'object') return '';
   const text = cleanDisplayText(raw);
+
+  // Avoid converting dates or sportsbook codes into fake minutes.
+  if (/^\d{4}-\d{2}-\d{2}/.test(text) || /^[A-Z]{2,}_[A-Z0-9_]+$/.test(text)) return '';
   const number = text.match(/\d+/)?.[0];
-  return number ? `${number}'` : text;
+  if (!number) return text.length <= 6 ? text : '';
+  const minute = Number.parseInt(number, 10);
+  if (!Number.isFinite(minute) || minute > 240) return '';
+  return `${minute}'`;
+}
+
+function normalizeTimelineType(value = '') {
+  const text = cleanDisplayText(value, '');
+  if (!text) return '';
+  const code = text.toUpperCase().replace(/[\s-]+/g, '_');
+  if (/^[A-Z]{2,}_[A-Z0-9_]+$/.test(code)) return '';
+
+  const key = normalizedKeyText(text);
+  if (!key) return '';
+  if (key.includes('goal')) return 'Goal';
+  if (key.includes('yellow') && key.includes('card')) return 'Yellow card';
+  if (key.includes('red') && key.includes('card')) return 'Red card';
+  if (key.includes('substitution') || key.includes('substitute')) return 'Substitution';
+  if (key.includes('corner')) return 'Corner';
+  if (key.includes('shot')) return 'Shot';
+  if (key.includes('foul')) return 'Foul';
+  if (key.includes('penalty')) return 'Penalty';
+  if (key.includes('attack')) return 'Attack';
+  if (key.includes('chance')) return 'Chance';
+  if (key.includes('kick off') || key.includes('kickoff')) return 'Kick-off';
+  if (key.includes('half')) return 'Half-time';
+  if (key.includes('period')) return 'Period';
+  if (key.includes('set')) return 'Set';
+  if (key.includes('game')) return 'Game';
+  if (key.includes('point')) return 'Point';
+
+  // Keep short human-readable labels, drop enum-looking values.
+  return text.length <= 40 ? titleCaseText(text) : '';
+}
+
+function collectTimelineArrays(payload) {
+  const arrays = [];
+  const seen = new Set();
+
+  function addArray(array) {
+    if (!Array.isArray(array) || seen.has(array)) return;
+    if (!array.some((item) => isPlainObject(item))) return;
+    seen.add(array);
+    arrays.push(array);
+  }
+
+  function walk(value, keyName = '', depth = 0) {
+    if (depth > 5 || value === null || value === undefined) return;
+
+    if (Array.isArray(value)) {
+      const key = normalizedKeyText(keyName);
+      const namedLikeTimeline = /\b(?:timeline|incident|incidents|commentary|match events|match event|events)\b/.test(key);
+      const hasMinuteItems = value.some((item) => isPlainObject(item) && minuteFromItem(item));
+      if (namedLikeTimeline || hasMinuteItems) addArray(value);
+      for (const item of value.slice(0, 40)) walk(item, '', depth + 1);
+      return;
+    }
+
+    if (isPlainObject(value)) {
+      for (const [key, item] of Object.entries(value)) walk(item, key, depth + 1);
+    }
+  }
+
+  walk(payload);
+  return arrays;
 }
 
 function normalizeTimeline(...payloads) {
   const rows = [];
   for (const payload of payloads) {
     if (!payload) continue;
-    const arrays = collectArrays(payload, (item) => {
-      return pick(item, ['minute', 'min', 'time', 'matchTime', 'elapsed', 'clock']) !== '' || pick(item, ['type', 'eventType', 'incidentType', 'name']) !== '';
-    });
+    const arrays = collectTimelineArrays(payload);
 
     for (const array of arrays.slice(0, 4)) {
       for (const item of array.slice(0, 30)) {
+        if (!isPlainObject(item)) continue;
         const minute = minuteFromItem(item);
-        const type = cleanDisplayText(pick(item, ['type', 'eventType', 'incidentType', 'name', 'title']), 'Event');
+        if (!minute) continue;
+
+        const rawType = pick(item, ['eventType', 'incidentType', 'type', 'name', 'title']);
+        const type = normalizeTimelineType(rawType) || 'Event';
         const team = cleanDisplayText(pick(item, ['team', 'teamName', 'participantName', 'side']));
         const text = cleanDisplayText(pick(item, ['description', 'text', 'comment', 'detail', 'playerName', 'player']));
-        if (!minute && !type && !text) continue;
+        if (!type && !text) continue;
         rows.push(compactObject({ minute, type, team, text }));
       }
     }

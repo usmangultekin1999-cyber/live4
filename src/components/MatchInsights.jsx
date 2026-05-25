@@ -28,6 +28,154 @@ function numberFromValue(value) {
   return match ? Number.parseFloat(match[0]) : null;
 }
 
+function normalizeKey(value = '') {
+  return cleanDisplayText(value, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .toLocaleLowerCase('en-US')
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isEnumCode(value = '') {
+  const text = cleanDisplayText(value, '').trim();
+  return /^[A-Z]{2,}_[A-Z0-9_]+$/.test(text.toUpperCase().replace(/[\s-]+/g, '_'));
+}
+
+function isStatLabelAllowed(label = '') {
+  const key = normalizeKey(label);
+  if (!key) return false;
+  if (/\b(?:team id|teamid|team name|teamname|participant id|participant name|wins?|draws?|losses?|played|form|rank|ranking|position|standing|standings|season|league id|group id|country|code|slug|logo|image|name|id)\b/.test(key)) return false;
+
+  return [
+    'possess', 'shot', 'corner', 'card', 'foul', 'offside', 'save', 'attack', 'penalt', 'expected goal', 'xg',
+    'ace', 'double fault', 'serve', 'break point', 'field goal', 'three point', '3 point', 'free throw',
+    'rebound', 'assist', 'turnover', 'steal', 'block'
+  ].some((part) => key.includes(part));
+}
+
+function isStatValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return true;
+  if (value === null || value === undefined || typeof value === 'object') return false;
+  const text = cleanDisplayText(value, '');
+  return /^-?\d+(?:[.,]\d+)?%?$/.test(text);
+}
+
+function normalizeStatsForDisplay(stats = []) {
+  const seen = new Set();
+  return stats
+    .filter((row) => {
+      const label = cleanDisplayText(row?.label, '');
+      if (!isStatLabelAllowed(label)) return false;
+      if (!isStatValue(row?.home) || !isStatValue(row?.away)) return false;
+      const key = normalizeKey(label);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 8);
+}
+
+function formatOddsDisplay(value) {
+  const raw = cleanDisplayText(value, '').trim();
+  if (!raw) return '';
+
+  const numeric = raw.replace(/\s+/g, '').replace(',', '.').match(/^-?\d+(?:\.\d+)?$/);
+  if (!numeric) return raw;
+
+  let number = Number.parseFloat(numeric[0]);
+  if (!Number.isFinite(number)) return '';
+
+  const integerLike = /^-?\d+$/.test(raw);
+  if (integerLike && Math.abs(number) >= 1000) number /= 1000;
+  else if (integerLike && Math.abs(number) > 100) number /= 100;
+
+  if (number <= 1 || number > 500) return '';
+  return number.toFixed(2);
+}
+
+function normalizeOutcomeName(value = '') {
+  const text = cleanDisplayText(value, '').trim();
+  if (!text) return '';
+
+  const code = text.toUpperCase().replace(/[\s-]+/g, '_');
+  const map = new Map([
+    ['OT_ONE', '1'],
+    ['OT_1', '1'],
+    ['ONE', '1'],
+    ['HOME', '1'],
+    ['OT_CROSS', 'X'],
+    ['OT_X', 'X'],
+    ['CROSS', 'X'],
+    ['DRAW', 'X'],
+    ['OT_DRAW', 'X'],
+    ['OT_TWO', '2'],
+    ['OT_2', '2'],
+    ['TWO', '2'],
+    ['AWAY', '2'],
+    ['YES', 'Yes'],
+    ['NO', 'No'],
+    ['OVER', 'Over'],
+    ['UNDER', 'Under']
+  ]);
+
+  if (map.has(code)) return map.get(code);
+  if (isEnumCode(text)) return '';
+  return text;
+}
+
+function normalizeOddsForDisplay(odds = []) {
+  return odds
+    .map((market) => {
+      const name = cleanDisplayText(market?.name, 'Market');
+      const outcomes = Array.isArray(market?.outcomes)
+        ? market.outcomes
+            .map((outcome) => ({
+              name: normalizeOutcomeName(outcome?.name),
+              odds: formatOddsDisplay(outcome?.odds)
+            }))
+            .filter((outcome) => outcome.name && outcome.odds)
+        : [];
+
+      return outcomes.length ? { name, outcomes } : null;
+    })
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function validTimelineType(type = '') {
+  const clean = cleanDisplayText(type, '');
+  if (!clean || isEnumCode(clean)) return '';
+  return clean;
+}
+
+function normalizeTimelineForDisplay(timeline = []) {
+  const seen = new Set();
+  return timeline
+    .map((item) => {
+      const minute = cleanDisplayText(item?.minute, '');
+      const type = validTimelineType(item?.type);
+      const team = cleanDisplayText(item?.team, '');
+      const text = cleanDisplayText(item?.text, '');
+      if (!minute || (!type && !text)) return null;
+      const key = `${minute}-${type}-${team}-${text}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return { minute, type: type || 'Event', team, text };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function hasLineupData(lineups) {
+  const homePlayers = lineups?.homePlayers || [];
+  const awayPlayers = lineups?.awayPlayers || [];
+  return Boolean(lineups?.homeFormation || lineups?.awayFormation || homePlayers.length || awayPlayers.length);
+}
+
 function Panel({ title, children, className = '', badge }) {
   return (
     <section className={`insight-panel ${className}`.trim()}>
@@ -85,8 +233,6 @@ function EventInfo({ details, match, language }) {
 }
 
 function StatisticsPanel({ stats, language }) {
-  if (!stats.length) return null;
-
   return (
     <Panel title={t(language, 'statistics')}>
       <div className="stats-list">
@@ -115,9 +261,8 @@ function StatisticsPanel({ stats, language }) {
     </Panel>
   );
 }
-function OddsPanel({ odds, language }) {
-  if (!odds.length) return null;
 
+function OddsPanel({ odds, language }) {
   return (
     <Panel title={t(language, 'odds')}>
       <div className="odds-list">
@@ -138,9 +283,8 @@ function OddsPanel({ odds, language }) {
     </Panel>
   );
 }
-function TimelinePanel({ timeline, language }) {
-  if (!timeline.length) return null;
 
+function TimelinePanel({ timeline, language }) {
   return (
     <Panel title={t(language, 'timeline')}>
       <div className="timeline-list">
@@ -163,11 +307,10 @@ function TimelinePanel({ timeline, language }) {
     </Panel>
   );
 }
+
 function LineupsPanel({ lineups, language, match }) {
   const homePlayers = lineups?.homePlayers || [];
   const awayPlayers = lineups?.awayPlayers || [];
-  const hasData = Boolean(lineups?.homeFormation || lineups?.awayFormation || homePlayers.length || awayPlayers.length);
-  if (!hasData) return null;
 
   return (
     <Panel title={t(language, 'lineups')}>
@@ -193,9 +336,8 @@ function LineupsPanel({ lineups, language, match }) {
     </Panel>
   );
 }
-function RelatedPanel({ related, language }) {
-  if (!related.length) return null;
 
+function RelatedPanel({ related, language }) {
   return (
     <Panel title={t(language, 'relatedMatches')}>
       <div className="related-list">
@@ -209,6 +351,7 @@ function RelatedPanel({ related, language }) {
     </Panel>
   );
 }
+
 export default function MatchInsights({ details, status, error, match, language }) {
   if (status === 'loading') {
     return (
@@ -230,22 +373,29 @@ export default function MatchInsights({ details, status, error, match, language 
     );
   }
 
-  if (!details) return null;
+  if (!details || details.matched === false) return null;
 
-  if (details.matched === false) return null;
+  const stats = normalizeStatsForDisplay(details.stats || []);
+  const odds = normalizeOddsForDisplay(details.odds || []);
+  const timeline = normalizeTimelineForDisplay(details.timeline || []);
+  const lineups = hasLineupData(details.lineups) ? details.lineups : null;
+  const related = Array.isArray(details.related) ? details.related : [];
+  const hasMainPanels = stats.length > 0 || timeline.length > 0 || Boolean(lineups);
 
   return (
     <div className="match-insights">
-      <div className="insight-main">
-        <StatisticsPanel stats={details.stats || []} language={language} />
-        <TimelinePanel timeline={details.timeline || []} language={language} />
-        <LineupsPanel lineups={details.lineups} language={language} match={match} />
-      </div>
+      {hasMainPanels && (
+        <div className="insight-main">
+          {stats.length > 0 && <StatisticsPanel stats={stats} language={language} />}
+          {timeline.length > 0 && <TimelinePanel timeline={timeline} language={language} />}
+          {lineups && <LineupsPanel lineups={lineups} language={language} match={match} />}
+        </div>
+      )}
 
       <aside className="insight-side">
         <EventInfo details={details} match={match} language={language} />
-        <OddsPanel odds={details.odds || []} language={language} />
-        <RelatedPanel related={details.related || []} language={language} />
+        {odds.length > 0 && <OddsPanel odds={odds} language={language} />}
+        {related.length > 0 && <RelatedPanel related={related} language={language} />}
       </aside>
     </div>
   );
