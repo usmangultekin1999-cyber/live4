@@ -8,17 +8,6 @@ function splitLiveLabel(label) {
   return { primary: parts[0], secondary: parts.slice(1).join(' ') };
 }
 
-function getSportInitials(category) {
-  const words = String(category || 'TV')
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase();
-  return String(words[0] || 'TV').slice(0, 2).toUpperCase();
-}
-
 export default function MatchCard({ match, onOpen, language }) {
   const { time, league } = parseLeague(match.league, language);
   const home = cleanDisplayText(match.home, 'Home');
@@ -27,7 +16,6 @@ export default function MatchCard({ match, onOpen, language }) {
   const disabled = !match.videoid;
   const liveLabel = t(language, 'liveBroadcast');
   const liveParts = splitLiveLabel(liveLabel);
-  const sportInitials = getSportInitials(category);
 
   return (
     <button
@@ -55,7 +43,6 @@ export default function MatchCard({ match, onOpen, language }) {
       </span>
 
       <span className="broadcast-meta">
-        <span className="sport-mini-mark" aria-hidden="true">{sportInitials}</span>
         <span className="broadcast-sport" title={category}>{category}</span>
         <span className="broadcast-divider" aria-hidden="true" />
         <span className="broadcast-league" title={league}>{league}</span>
@@ -63,8 +50,10 @@ export default function MatchCard({ match, onOpen, language }) {
 
       <span className="broadcast-matchup">
         <span className="broadcast-team broadcast-team--home">
-          <TeamLogo src={match.home_icon} name={home} />
-          <strong title={home}>{home}</strong>
+          <span className="broadcast-team-stack">
+            <TeamLogo src={match.home_icon} name={home} />
+            <strong title={home}>{home}</strong>
+          </span>
         </span>
 
         <span className="broadcast-vs-wrap" aria-hidden="true">
@@ -74,8 +63,10 @@ export default function MatchCard({ match, onOpen, language }) {
         </span>
 
         <span className="broadcast-team broadcast-team--away">
-          <strong title={away}>{away}</strong>
-          <TeamLogo src={match.away_icon} name={away} align="right" />
+          <span className="broadcast-team-stack">
+            <TeamLogo src={match.away_icon} name={away} align="right" />
+            <strong title={away}>{away}</strong>
+          </span>
         </span>
       </span>
     </button>
