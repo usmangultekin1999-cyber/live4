@@ -1568,8 +1568,7 @@ body {
 }
 
 .site-header,
-main,
-.player-overlay {
+main {
   position: relative;
 }
 
@@ -2994,5 +2993,38 @@ body {
 
   .broadcast-vs-line--right {
     left: calc(50% + 1.12rem);
+  }
+}
+
+
+/* v17: keep player as a real popup overlay.
+   A previous neon background rule accidentally changed .player-overlay to
+   position: relative, which made the player render at the bottom of the page. */
+body.has-player-open {
+  overflow: hidden;
+}
+
+.player-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  isolation: isolate;
+}
+
+.player-backdrop {
+  position: fixed;
+  inset: 0;
+}
+
+.player-panel {
+  max-height: 94vh;
+}
+
+@media (max-width: 720px) {
+  .player-overlay {
+    padding: 0.65rem;
   }
 }

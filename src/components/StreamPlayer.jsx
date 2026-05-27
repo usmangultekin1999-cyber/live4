@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import MatchInsights from './MatchInsights.jsx';
 import { cleanDisplayText, parseLeague } from '../lib/helpers.js';
 import { fetchMatchDetails } from '../lib/api.js';
@@ -77,6 +78,12 @@ export default function StreamPlayer({ match, onClose, language }) {
       controller.abort();
     };
   }, [match?.id, match?.home, match?.away, match?.category, match?.league, language]);
+
+
+  useEffect(() => {
+    document.body.classList.add('has-player-open');
+    return () => document.body.classList.remove('has-player-open');
+  }, []);
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -207,7 +214,7 @@ export default function StreamPlayer({ match, onClose, language }) {
     };
   }, [streamUrl, language]);
 
-  return (
+  const overlay = (
     <div className="player-overlay" role="dialog" aria-modal="true" aria-label={t(language, 'playerLabel')}>
       <div className="player-backdrop" onClick={onClose} />
 
@@ -268,4 +275,6 @@ export default function StreamPlayer({ match, onClose, language }) {
       </section>
     </div>
   );
+
+  return createPortal(overlay, document.body);
 }

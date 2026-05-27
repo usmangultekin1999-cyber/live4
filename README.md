@@ -137,3 +137,8 @@ The site logo is served from `public/LOGO.PNG`. The favicon and Apple touch icon
 ## Cloudflare stream-load protection
 
 This version intentionally has no `/api/stream`, `/proxy`, `/hls` or media relay endpoint. If a request for a media file reaches your Worker by mistake, the Worker returns `410` and does not fetch the upstream stream. This protects your Cloudflare Worker from bandwidth/subrequest limits and keeps the stream traffic between the visitor and the provider URL.
+
+
+## v17 update
+
+The match player now opens as a fixed popup overlay again. A CSS override that caused the player to render at the bottom of the page has been removed, and the player is rendered through a React portal to prevent layout conflicts.
