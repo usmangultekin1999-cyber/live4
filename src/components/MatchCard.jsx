@@ -12,17 +12,28 @@ export default function MatchCard({ match, onOpen, language }) {
   return (
     <button
       type="button"
-      className={`match-card ${disabled ? 'is-disabled' : ''}`}
+      className={`match-card ${disabled ? 'is-disabled' : 'has-stream'}`}
       onClick={() => !disabled && onOpen(match)}
       disabled={disabled}
       aria-label={t(language, 'openMatchAria', { home, away })}
     >
       <span className="card-topline">
-        <span className="sport-badge">{category}</span>
+        {disabled ? (
+          <span className="card-status-badge card-status-badge--off">{t(language, 'noStream')}</span>
+        ) : (
+          <span className="card-status-badge card-status-badge--live">
+            <i aria-hidden="true" />
+            {t(language, 'liveBroadcast')}
+          </span>
+        )}
         <span className="match-time">{time || t(language, 'live')}</span>
       </span>
 
-      <span className="league-name" title={league}>{league}</span>
+      <span className="league-name" title={`${category} · ${league}`}>
+        <span>{category}</span>
+        <b aria-hidden="true">•</b>
+        <em>{league}</em>
+      </span>
 
       <span className="teams-row">
         <span className="team team--home">
@@ -36,10 +47,6 @@ export default function MatchCard({ match, onOpen, language }) {
           <strong title={away}>{away}</strong>
           <TeamLogo src={match.away_icon} name={away} align="right" />
         </span>
-      </span>
-
-      <span className="card-action">
-        {disabled ? t(language, 'noStream') : t(language, 'startWatching')}
       </span>
     </button>
   );

@@ -220,6 +220,13 @@ export default function App() {
           />
 
           <section className="content-wrap" aria-live="polite">
+            <div className="list-live-strip">
+              <span><i aria-hidden="true" />{t(language, 'liveBroadcast')}</span>
+              {status === 'ready' && (
+                <small>{filteredMatches.length} {matchWord(language, filteredMatches.length)}</small>
+              )}
+            </div>
+
             {status === 'loading' && <SkeletonGrid />}
 
             {status === 'error' && (
