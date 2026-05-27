@@ -220,13 +220,6 @@ export default function App() {
           />
 
           <section className="content-wrap" aria-live="polite">
-            <div className="list-live-strip">
-              <span><i aria-hidden="true" />{t(language, 'liveBroadcast')}</span>
-              {status === 'ready' && (
-                <small>{filteredMatches.length} {matchWord(language, filteredMatches.length)}</small>
-              )}
-            </div>
-
             {status === 'loading' && <SkeletonGrid />}
 
             {status === 'error' && (
@@ -244,7 +237,10 @@ export default function App() {
             {status === 'ready' && filteredMatches.length > 0 && groupedMatches.map(([category, items]) => (
               <section className="match-section" key={category}>
                 <div className="section-heading">
-                  <h2>{translateCategory(category, language)}</h2>
+                  <div className="section-title-group">
+                    <span className="heading-live-chip"><i aria-hidden="true" />{t(language, 'liveBroadcast')}</span>
+                    <h2>{translateCategory(category, language)}</h2>
+                  </div>
                   <span>{items.length} {matchWord(language, items.length)}</span>
                 </div>
 
