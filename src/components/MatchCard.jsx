@@ -2,20 +2,13 @@ import TeamLogo from './TeamLogo.jsx';
 import { cleanDisplayText, parseLeague } from '../lib/helpers.js';
 import { t, translateCategory } from '../lib/i18n.js';
 
-function splitLiveLabel(label) {
-  const parts = String(label || '').trim().split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) return { primary: label || 'LIVE', secondary: '' };
-  return { primary: parts[0], secondary: parts.slice(1).join(' ') };
-}
-
 export default function MatchCard({ match, onOpen, language }) {
   const { time, league } = parseLeague(match.league, language);
   const home = cleanDisplayText(match.home, 'Home');
   const away = cleanDisplayText(match.away, 'Away');
   const category = match.category ? translateCategory(cleanDisplayText(match.category), language) : t(language, 'streamBadge');
   const disabled = !match.videoid;
-  const liveLabel = t(language, 'liveBroadcast');
-  const liveParts = splitLiveLabel(liveLabel);
+  const liveLabel = t(language, 'live');
 
   return (
     <button
@@ -29,8 +22,7 @@ export default function MatchCard({ match, onOpen, language }) {
         {!disabled ? (
           <span className="broadcast-live-pill" aria-label={liveLabel}>
             <span className="broadcast-dot" aria-hidden="true" />
-            <span className="broadcast-live-main">{liveParts.primary}</span>
-            {liveParts.secondary && <span className="broadcast-live-tail">{liveParts.secondary}</span>}
+            <span className="broadcast-live-main">{liveLabel}</span>
           </span>
         ) : (
           <span className="broadcast-live-pill is-offline">{t(language, 'noStream')}</span>

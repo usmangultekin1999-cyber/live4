@@ -20,6 +20,7 @@ import {
   t,
   translateCategory
 } from './lib/i18n.js';
+import { categoryIcon, uiText } from './lib/designText.js';
 
 const AUTO_REFRESH_MS = 120_000;
 
@@ -36,7 +37,7 @@ function Header({ query, onQueryChange, language, onLanguageChange }) {
 
       <div className="header-controls">
         <label className="search-box">
-          <span aria-hidden="true">⌕</span>
+          <span className="search-icon" aria-hidden="true">⌕</span>
           <input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
@@ -59,6 +60,33 @@ function Header({ query, onQueryChange, language, onLanguageChange }) {
         </label>
       </div>
     </header>
+  );
+}
+
+function TopCategoryTabs({ categories, activeCategory, onChange, language }) {
+  return (
+    <div className="top-category-wrap" aria-label={t(language, 'categoriesAria')}>
+      <div className="top-category-tabs">
+        {categories.map((category) => {
+          const active = category.id === activeCategory;
+
+          return (
+            <button
+              key={category.id}
+              type="button"
+              className={`top-category-tab ${active ? 'is-active' : ''}`}
+              onClick={() => onChange(category.id)}
+            >
+              {category.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <button type="button" className="top-view-button" onClick={() => onChange(ALL_CATEGORY)}>
+        {uiText(language, 'viewAll')} <span aria-hidden="true">›</span>
+      </button>
+    </div>
   );
 }
 
@@ -220,6 +248,20 @@ export default function App() {
           />
 
           <section className="content-wrap" aria-live="polite">
+            <section className="live-now-panel">
+              <div className="live-now-heading">
+                <span className="live-now-icon" aria-hidden="true">⌁</span>
+                <h1>{uiText(language, 'liveNow')}</h1>
+              </div>
+
+              <TopCategoryTabs
+                categories={categories}
+                activeCategory={activeCategory}
+                onChange={setActiveCategory}
+                language={language}
+              />
+            </section>
+
             {status === 'loading' && <SkeletonGrid />}
 
             {status === 'error' && (
@@ -238,10 +280,15 @@ export default function App() {
               <section className="match-section" key={category}>
                 <div className="section-heading">
                   <div className="section-title-group">
-                    <span className="heading-live-chip"><i aria-hidden="true" />{t(language, 'liveBroadcast')}</span>
+                    <span className="section-sport-icon" aria-hidden="true">{categoryIcon(category)}</span>
                     <h2>{translateCategory(category, language)}</h2>
                   </div>
-                  <span>{items.length} {matchWord(language, items.length)}</span>
+
+                  <div className="section-actions">
+                    <button type="button" onClick={() => setActiveCategory(category)}>{uiText(language, 'viewAll')}</button>
+                    <i aria-hidden="true" />
+                    <span>{items.length} {matchWord(language, items.length)}</span>
+                  </div>
                 </div>
 
                 <div className="match-grid">
