@@ -46,10 +46,6 @@ function Header({ query, onQueryChange, language, onLanguageChange }) {
           />
         </label>
 
-        <button className="notification-button" type="button" aria-label="Notifications">
-          <span aria-hidden="true">♧</span>
-          <i aria-hidden="true">3</i>
-        </button>
 
         <label className="language-control">
           <span aria-hidden="true">🌐</span>
@@ -254,12 +250,7 @@ export default function App() {
           />
 
           <section className="content-wrap" aria-live="polite">
-            <section className="live-now-panel">
-              <div className="live-now-heading">
-                <span className="live-now-icon" aria-hidden="true">⌁</span>
-                <h1>{uiText(language, 'liveNow')}</h1>
-              </div>
-
+            <section className="content-top-tabs">
               <TopCategoryTabs
                 categories={categories}
                 activeCategory={activeCategory}

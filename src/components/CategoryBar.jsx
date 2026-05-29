@@ -19,6 +19,9 @@ const SOCIAL_LINKS = [
 export default function CategoryBar({ categories, activeCategory, onChange, language }) {
   return (
     <aside className="category-shell category-shell--compact" aria-label={t(language, 'categoriesAria')}>
+      <a className="sidebar-brand" href="/" aria-label="ErosMacTV home">
+        <img src="/LOGO.PNG" alt="ErosMacTV" />
+      </a>
       <div className="category-socials">
         <p>{t(language, 'socialTitle')}</p>
         <div className="social-link-list">
