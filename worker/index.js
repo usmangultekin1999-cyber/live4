@@ -1,4 +1,4 @@
-import { handleMatches, handleMatchDetails, handleSportsStatus, jsonResponse } from './api.js';
+import { handleMatches, handleMatchDetails, handleSportsStatus, handleIptvStream, handleChannels, jsonResponse } from './api.js';
 
 function looksLikeStreamRequest(pathname = '') {
   const cleanPath = pathname.toLowerCase();
@@ -17,7 +17,17 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/matches' && request.method === 'GET') {
-      return handleMatches(env);
+      return handleMatches(env, request);
+    }
+
+
+
+    if (url.pathname === '/api/channels' && request.method === 'GET') {
+      return handleChannels(request, env);
+    }
+
+    if (url.pathname === '/api/iptv/stream' && request.method === 'GET') {
+      return handleIptvStream(request, env);
     }
 
     if (url.pathname === '/api/match-details' && request.method === 'GET') {

@@ -1430,3 +1430,48 @@ body.has-player-open { overflow: hidden; }
     padding-top: 0.9rem;
   }
 }
+
+/* v24 IPTV channel cards */
+.broadcast-card.is-channel {
+  grid-template-rows: auto auto 1fr;
+}
+
+.broadcast-channel {
+  min-height: 98px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.45rem;
+  text-align: center;
+}
+
+.broadcast-channel-logo .team-logo {
+  width: 4.15rem;
+  height: 4.15rem;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 0 0.32rem rgba(255, 255, 255, 0.035),
+    0 0 28px rgba(255, 77, 221, 0.30);
+}
+
+.broadcast-channel strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: #fff;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92rem;
+  line-height: 1.12;
+  font-weight: 1000;
+}
+
+.broadcast-channel small {
+  max-width: 100%;
+  overflow: hidden;
+  color: #cdbaf8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 800;
+}

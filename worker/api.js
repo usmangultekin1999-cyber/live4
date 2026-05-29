@@ -28,6 +28,11 @@ const CATEGORY_TRANSLATIONS = new Map([
   ['tumu', 'All'],
   ['tum', 'All'],
   ['all', 'All'],
+  ['iptv', 'IPTV'],
+  ['tv', 'IPTV'],
+  ['channels', 'IPTV'],
+  ['kanal', 'IPTV'],
+  ['kanallar', 'IPTV'],
   ['diger', 'Other'],
   ['other', 'Other'],
   ['futbol', 'Football'],
@@ -745,6 +750,245 @@ async function loadSlaMatches(env) {
   };
 }
 
+
+function hasIptvConfig(env = {}) {
+  if (String(env.IPTV_ENABLED || '').trim() === '0') return false;
+  return Boolean(
+    cleanString(env.IPTV_M3U_URL || env.IPTV_PLAYLIST_URL) ||
+    (cleanString(env.IPTV_SERVER || env.XTREAM_SERVER) && cleanString(env.IPTV_USERNAME || env.XTREAM_USERNAME) && cleanString(env.IPTV_PASSWORD || env.XTREAM_PASSWORD))
+  );
+}
+
+function getIptvConfig(env = {}) {
+  const output = cleanString(env.IPTV_OUTPUT || env.XTREAM_OUTPUT, 'm3u8');
+  const category = cleanDisplayText(env.IPTV_CATEGORY || 'IPTV', 'IPTV');
+  const rawM3uUrl = cleanString(env.IPTV_M3U_URL || env.IPTV_PLAYLIST_URL);
+
+  if (rawM3uUrl) {
+    try {
+      const url = new URL(rawM3uUrl);
+      if (output && url.searchParams.has('output')) url.searchParams.set('output', output);
+      if (output && !url.searchParams.has('output') && /get\.php$/i.test(url.pathname)) url.searchParams.set('output', output);
+      return { url, category, output };
+    } catch (error) {
+      const err = new Error('IPTV_M3U_URL is not a valid URL.');
+      err.status = 500;
+      throw err;
+    }
+  }
+
+  const server = cleanString(env.IPTV_SERVER || env.XTREAM_SERVER).replace(/\/+$/g, '');
+  const username = cleanString(env.IPTV_USERNAME || env.XTREAM_USERNAME);
+  const password = cleanString(env.IPTV_PASSWORD || env.XTREAM_PASSWORD);
+
+  if (!server || !username || !password) {
+    const err = new Error('IPTV source is enabled but IPTV_M3U_URL or IPTV_SERVER/IPTV_USERNAME/IPTV_PASSWORD is missing.');
+    err.status = 500;
+    throw err;
+  }
+
+  try {
+    const url = new URL(`${server}/get.php`);
+    url.searchParams.set('username', username);
+    url.searchParams.set('password', password);
+    url.searchParams.set('type', cleanString(env.IPTV_PLAYLIST_TYPE, 'm3u_plus'));
+    url.searchParams.set('output', output || 'm3u8');
+    return { url, category, output };
+  } catch (error) {
+    const err = new Error('IPTV_SERVER is not a valid URL.');
+    err.status = 500;
+    throw err;
+  }
+}
+
+function parseM3uAttributes(value = '') {
+  const attrs = {};
+  const attrPattern = /([a-zA-Z0-9_-]+)=("[^"]*"|'[^']*'|[^\s,]+)/g;
+  let match;
+  while ((match = attrPattern.exec(value)) !== null) {
+    const raw = match[2] || '';
+    attrs[match[1].toLowerCase()] = cleanDisplayText(raw.replace(/^['"]|['"]$/g, ''));
+  }
+  return attrs;
+}
+
+function stableHash(value = '') {
+  let hash = 2166136261;
+  const text = cleanString(value);
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function safeIptvUrl(url = '', output = 'm3u8') {
+  const raw = cleanString(url);
+  if (!/^https?:\/\//i.test(raw)) return '';
+
+  try {
+    const parsed = new URL(raw);
+    if (output && /^m3u8$/i.test(output)) {
+      // Xtream playlist entries commonly arrive as /live/user/pass/123.ts when
+      // output=mpegts is used. Prefer the HLS form for browser playback when the
+      // provider supports it.
+      parsed.pathname = parsed.pathname.replace(/\.ts$/i, '.m3u8');
+    }
+    return parsed.href;
+  } catch (error) {
+    return raw;
+  }
+}
+
+function parseIptvM3u(text = '', config = {}) {
+  const lines = String(text || '').split(/\r?\n/);
+  const output = [];
+  let pending = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (line.toUpperCase().startsWith('#EXTINF')) {
+      const commaIndex = line.lastIndexOf(',');
+      const info = commaIndex >= 0 ? line.slice(0, commaIndex) : line;
+      const namePart = commaIndex >= 0 ? line.slice(commaIndex + 1) : '';
+      const attrs = parseM3uAttributes(info);
+      pending = {
+        attrs,
+        name: cleanDisplayText(attrs['tvg-name'] || attrs['tvg-id'] || namePart, 'IPTV Channel'),
+        group: cleanDisplayText(attrs['group-title'] || attrs.group || config.category || 'IPTV', 'IPTV'),
+        logo: cleanString(attrs['tvg-logo'] || attrs.logo)
+      };
+      continue;
+    }
+
+    if (line.startsWith('#')) continue;
+    if (!/^https?:\/\//i.test(line)) continue;
+
+    const meta = pending || { attrs: {}, name: 'IPTV Channel', group: config.category || 'IPTV', logo: '' };
+    const streamUrl = safeIptvUrl(line, config.output);
+    if (!streamUrl) {
+      pending = null;
+      continue;
+    }
+
+    const name = cleanDisplayText(meta.name, 'IPTV Channel');
+    const group = cleanDisplayText(meta.group || config.category || 'IPTV', 'IPTV');
+    const rawId = cleanString(meta.attrs?.['tvg-id'] || meta.attrs?.['channel-id'] || meta.attrs?.id) || stableHash(`${name}|${group}|${streamUrl}`);
+    const id = `iptv:${stableHash(`${rawId}|${name}|${streamUrl}`)}`;
+
+    output.push({
+      id,
+      source: 'iptv',
+      provider: 'IPTV',
+      category: config.category || 'IPTV',
+      league: group === (config.category || 'IPTV') ? 'IPTV Channels' : group,
+      home: name,
+      away: '',
+      home_icon: cleanString(meta.logo),
+      away_icon: '',
+      league_icon: '',
+      screenshot: '',
+      is_channel: true,
+      channel_group: group,
+      streams: [normalizeStreamLine({ id: 'main', name: group || 'IPTV', url: streamUrl, type: config.output || 'm3u8', isPlayed: true }, 0)],
+      videoid: streamUrl
+    });
+
+    pending = null;
+  }
+
+  return output;
+}
+
+async function loadIptvChannels(env, requestUrl = null, { exposeDirectUrls = false } = {}) {
+  if (!hasIptvConfig(env)) {
+    return {
+      success: true,
+      configured: false,
+      count: 0,
+      data: []
+    };
+  }
+
+  const config = getIptvConfig(env);
+  const response = await fetch(config.url.toString(), {
+    headers: {
+      Accept: 'application/x-mpegURL, application/vnd.apple.mpegurl, text/plain, */*',
+      'User-Agent': 'ErosMacTV-IPTV-loader/1.0'
+    },
+    cf: { cacheTtl: Number.parseInt(cleanString(env.IPTV_CACHE_TTL, '240'), 10) || 240, cacheEverything: true }
+  });
+
+  if (!response.ok) {
+    const err = new Error(`IPTV playlist request failed with HTTP ${response.status}.`);
+    err.status = response.status || 502;
+    throw err;
+  }
+
+  const text = await response.text();
+  let channels = parseIptvM3u(text, config);
+
+  const limit = Number.parseInt(cleanString(env.IPTV_CHANNEL_LIMIT, '0'), 10);
+  if (Number.isFinite(limit) && limit > 0) channels = channels.slice(0, limit);
+
+  if (!exposeDirectUrls) {
+    const origin = requestUrl ? new URL(requestUrl).origin : '';
+    channels = channels.map((channel) => {
+      const redirectUrl = origin ? `${origin}/api/iptv/stream?id=${encodeURIComponent(channel.id)}` : `/api/iptv/stream?id=${encodeURIComponent(channel.id)}`;
+      return {
+        ...channel,
+        streams: channel.streams.map((stream) => ({ ...stream, url: redirectUrl })),
+        videoid: redirectUrl
+      };
+    });
+  }
+
+  return {
+    success: true,
+    configured: true,
+    count: channels.length,
+    generated_at: new Date().toISOString(),
+    expires_in: '4 minutes',
+    data: channels
+  };
+}
+
+export async function handleIptvStream(request, env) {
+  try {
+    const url = new URL(request.url);
+    const id = cleanString(url.searchParams.get('id'));
+    if (!id) return jsonResponse({ success: false, error: 'Missing IPTV channel id.' }, 400, { 'Cache-Control': 'no-store' });
+
+    const payload = await loadIptvChannels(env, request.url, { exposeDirectUrls: true });
+    const channel = payload.data.find((item) => item.id === id);
+    const streamUrl = channel?.streams?.[0]?.url || channel?.videoid || '';
+
+    if (!streamUrl) return jsonResponse({ success: false, error: 'IPTV channel was not found.' }, 404, { 'Cache-Control': 'no-store' });
+
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: streamUrl,
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Could not resolve IPTV stream.' }, error?.status || 502, { 'Cache-Control': 'no-store' });
+  }
+}
+
+export async function handleChannels(request, env) {
+  try {
+    const payload = await loadIptvChannels(env, request?.url || null, { exposeDirectUrls: false });
+    return jsonResponse(payload, 200, { 'Cache-Control': 'public, max-age=60, s-maxage=240' });
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Could not load IPTV channels.' }, error?.status || 502, { 'Cache-Control': 'no-store' });
+  }
+}
+
 function dedupeMergedMatches(matches = []) {
   const output = [];
   const seenIds = new Set();
@@ -784,11 +1028,13 @@ function dedupeMergedMatches(matches = []) {
   return output;
 }
 
-export async function handleMatches(env) {
+export async function handleMatches(env, request = null) {
   try {
     const sourceMode = normalizeLookup(env.MATCH_SOURCE_MODE || 'merge');
-    const useLegacy = !['sla', 'sla only', 'sla-only'].includes(sourceMode);
-    const useSla = !['legacy', 'legacy only', 'legacy-only', 'match', 'match only', 'match-only'].includes(sourceMode);
+    const useLegacy = !['sla', 'sla only', 'sla-only', 'iptv', 'iptv only', 'iptv-only'].includes(sourceMode);
+    const useSla = !['legacy', 'legacy only', 'legacy-only', 'match', 'match only', 'match-only', 'iptv', 'iptv only', 'iptv-only'].includes(sourceMode);
+    const useIptv = !['legacy', 'legacy only', 'legacy-only', 'match', 'match only', 'match-only', 'sla', 'sla only', 'sla-only'].includes(sourceMode);
+
 
     const sources = [];
 
@@ -800,8 +1046,12 @@ export async function handleMatches(env) {
       sources.push(loadLegacyStreamMatches(env).catch((error) => ({ success: false, source: 'legacy', error })));
     }
 
+    if (useIptv && hasIptvConfig(env)) {
+      sources.push(loadIptvChannels(env, request?.url || null, { exposeDirectUrls: false }).catch((error) => ({ success: false, source: 'iptv', error })));
+    }
+
     if (!sources.length) {
-      const err = new Error('No match source is configured. Add SLA_API_AUTH and/or MATCH_API_KEY as Cloudflare secrets.');
+      const err = new Error('No match source is configured. Add SLA_API_AUTH, MATCH_API_KEY and/or IPTV_M3U_URL as Cloudflare secrets.');
       err.status = 500;
       throw err;
     }
@@ -830,11 +1080,11 @@ export async function handleMatches(env) {
       success: true,
       count: data.length,
       generated_at: new Date().toISOString(),
-      expires_in: hasSlaConfig(env) ? '30 seconds' : '2 minutes',
+      expires_in: hasSlaConfig(env) ? '30 seconds' : (hasIptvConfig(env) ? '4 minutes' : '2 minutes'),
       source_errors: errors.length ? errors : undefined,
       data
     }, 200, {
-      'Cache-Control': hasSlaConfig(env) ? 'public, max-age=20, s-maxage=30' : 'public, max-age=30, s-maxage=90'
+      'Cache-Control': hasSlaConfig(env) ? 'public, max-age=20, s-maxage=30' : (hasIptvConfig(env) ? 'public, max-age=60, s-maxage=240' : 'public, max-age=30, s-maxage=90')
     });
   } catch (error) {
     return jsonResponse(

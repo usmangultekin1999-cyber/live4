@@ -148,6 +148,7 @@ function categoryPriority(id = '') {
 
   if (id === ALL_CATEGORY) return 0;
   if (!key || id === OTHER_CATEGORY) return 900;
+  if (/^(iptv|tv|channels|kanal|kanallar)$/.test(key)) return 40;
 
   // Requested fixed order for primary sports across the sidebar,
   // top tabs and match sections: 1) Football, 2) Basketball, 3) Volleyball.
