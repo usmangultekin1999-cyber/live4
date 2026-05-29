@@ -25,7 +25,7 @@ function normalizeClientMatch(match = {}) {
     category: cleanDisplayText(match.category, 'Other'),
     league: cleanDisplayText(match.league),
     home: cleanDisplayText(match.home, 'Home'),
-    away: match.is_channel ? '' : cleanDisplayText(match.away, 'Away'),
+    away: cleanDisplayText(match.away, 'Away'),
     home_icon: cleanUrl(match.home_icon),
     away_icon: cleanUrl(match.away_icon),
     league_icon: cleanUrl(match.league_icon),
@@ -33,8 +33,6 @@ function normalizeClientMatch(match = {}) {
     home_score: match.home_score,
     away_score: match.away_score,
     progress: cleanDisplayText(match.progress),
-    is_channel: Boolean(match.is_channel),
-    channel_group: cleanDisplayText(match.channel_group),
     is_played: match.is_played !== false,
     streams: Array.isArray(match.streams) ? match.streams.map(normalizeClientStream).filter((stream) => stream.url) : [],
     videoid: cleanUrl(match.videoid)

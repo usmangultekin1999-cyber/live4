@@ -88,7 +88,6 @@ export function uiText(language, key) {
 export function categoryIcon(category = '') {
   const key = String(category || '').toLowerCase();
   if (category === '__all__') return '✺';
-  if (key.includes('iptv') || key === 'tv' || key.includes('channel')) return '📺';
   if (key.includes('badminton')) return '🏸';
   if (key.includes('baseball')) return '⚾';
   if (key.includes('basket')) return '🏀';

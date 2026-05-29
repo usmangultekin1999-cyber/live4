@@ -4,15 +4,6 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 
 > Use this project only with stream sources and sports data feeds that you own or have permission to publish.
 
-
-## Changes in v24
-
-- Added optional IPTV / Xtream Codes playlist integration.
-- The Worker can load an M3U playlist server-side and append channels to the normal list under the `IPTV` category.
-- IPTV stream URLs are not placed directly in `/api/matches`; the card receives a same-site redirect URL such as `/api/iptv/stream?id=...`, and the Worker responds with a 302 redirect to the provider URL. This avoids exposing credentials in the match-list JSON while still avoiding media proxying.
-- Added `/api/channels` for checking IPTV channel parsing separately.
-- Added channel-mode cards so IPTV entries show as channels instead of fake `vs` matches.
-
 ## Changes in v23
 
 - Added SLA / SportLiveAPI Playback Links integration. The Worker can now load playable matches from the SLA `/lives/streams` API and map `liveList` stream lines to the existing ErosMacTV popup player.
@@ -111,49 +102,11 @@ SPORTS_API_KEY = your SportsAPI key
 SPORTS_API_BASE_URL = https://sports-api.net/api
 # Optional only if you want the heavier odds-first SportsAPI search:
 # SPORTS_API_RICH_MODE = 1
-
-# Optional IPTV / Xtream Codes source. Add credentials as Secrets.
-# Use either IPTV_M3U_URL OR IPTV_SERVER + IPTV_USERNAME + IPTV_PASSWORD.
-IPTV_M3U_URL = your full M3U URL
-IPTV_SERVER = your Xtream server URL
-IPTV_USERNAME = your Xtream username
-IPTV_PASSWORD = your Xtream password
-IPTV_OUTPUT = m3u8
-IPTV_CATEGORY = IPTV
 ```
 
-`MATCH_API_KEY`, `SLA_API_AUTH`, `SPORTS_API_KEY`, `IPTV_M3U_URL`, `IPTV_USERNAME` and `IPTV_PASSWORD` should be added as secrets. Do not upload `.env`, `.dev.vars`, or real API keys to GitHub.
+`MATCH_API_KEY`, `SLA_API_AUTH` and `SPORTS_API_KEY` should be added as secrets. Do not upload `.env`, `.dev.vars`, or real API keys to GitHub.
 
 You can also use `SPORTS_API_EVENTS_URL` instead of `SPORTS_API_KEY` + `SPORTS_API_BASE_URL` if you prefer storing the complete SportsAPI events URL in Cloudflare, but the recommended setup is to keep only the key in `SPORTS_API_KEY`.
-
-
-## IPTV / Xtream Codes integration
-
-Add the IPTV source in Cloudflare under `Settings > Variables and Secrets`. Do not commit real IPTV usernames, passwords, or full M3U URLs to GitHub.
-
-Recommended setup with Xtream fields:
-
-```txt
-IPTV_SERVER = https://your-provider-domain:port
-IPTV_USERNAME = your_username
-IPTV_PASSWORD = your_password
-IPTV_OUTPUT = m3u8
-IPTV_CATEGORY = IPTV
-MATCH_SOURCE_MODE = merge
-```
-
-Alternative setup with a full M3U URL:
-
-```txt
-IPTV_M3U_URL = https://provider.example/get.php?username=...&password=...&type=m3u_plus&output=m3u8
-IPTV_OUTPUT = m3u8
-IPTV_CATEGORY = IPTV
-MATCH_SOURCE_MODE = merge
-```
-
-`/api/matches` will include these channels under the `IPTV` category. `/api/channels` returns only the IPTV parsed channel list for troubleshooting. `/api/iptv/stream?id=...` resolves a channel and redirects the browser to the original provider stream URL; it does not proxy video through your Worker.
-
-For browser playback, HLS is recommended. If your provider only gives `http://.../123.ts` MPEG-TS streams, many browsers may fail or block playback on an HTTPS site. Use an HTTPS/HLS-capable IPTV source whenever possible.
 
 ## SLA / SportLiveAPI integration
 
@@ -216,10 +169,6 @@ SLA_API_URL="https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams"
 MATCH_SOURCE_MODE="merge"
 SPORTS_API_KEY="YOUR_SPORTS_API_KEY"
 SPORTS_API_BASE_URL="https://sports-api.net/api"
-IPTV_SERVER="https://YOUR_IPTV_SERVER"
-IPTV_USERNAME="YOUR_IPTV_USERNAME"
-IPTV_PASSWORD="YOUR_IPTV_PASSWORD"
-IPTV_OUTPUT="m3u8"
 ```
 
 ## Checking SportsAPI coverage
@@ -270,3 +219,15 @@ The match player now opens as a fixed popup overlay again. A CSS override that c
 - Removed the static Home/Live Now/Sports/Schedule/Favourites/Notifications links from the left menu.
 - Reduced and right-aligned the search area.
 - Prioritized Football, Basketball and Volleyball categories at the top of tabs, sidebar and sections.
+
+## v25 update
+
+This build is based on `erosmactv-worker-site-v23` and does not include the IPTV/Xtream/M3U source added later.
+
+Visual changes:
+- Green/white ErosMacTV theme.
+- White main content panel.
+- Green sidebar and menu styling.
+- Light modern match cards with green live badges.
+- Existing match APIs, SLA integration and SportsAPI details remain available.
+

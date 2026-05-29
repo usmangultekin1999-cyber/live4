@@ -12,7 +12,6 @@ function streamKind(url = '', explicitType = '') {
   if (type.includes('rtmp') || /^rtmp:/i.test(url)) return 'rtmp';
   if (type.includes('flv') || /\.flv($|\?)/.test(clean)) return 'flv';
   if (type.includes('mpd') || /\.mpd($|\?)/.test(clean)) return 'dash';
-  if (type.includes('mpegts') || type === 'ts' || /\.ts($|\?)/.test(clean)) return 'direct';
   if (type.includes('mp4') || /\.(mp4|webm|ogv|ogg)($|\?)/.test(clean)) return 'direct';
   return 'hls';
 }
