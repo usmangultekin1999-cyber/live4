@@ -138,10 +138,42 @@ export function isMatchSearchHit(match, query) {
   return haystack.includes(q);
 }
 
+
+function categoryPriority(id = '') {
+  const key = normalizeText(id)
+    .replace(/\be-?spor(?:t)?\b/g, ' ')
+    .replace(/\bespor(?:t)?\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (id === ALL_CATEGORY) return 0;
+  if (!key || id === OTHER_CATEGORY) return 900;
+
+  // Requested fixed order for primary sports across the sidebar,
+  // top tabs and match sections: 1) Football, 2) Basketball, 3) Volleyball.
+  if (/^(football|futbol|soccer)$/.test(key)) return 10;
+  if (/\b(football|futbol|soccer)\b/.test(key)) return 11;
+
+  if (/^(basketball|basketbol)$/.test(key)) return 20;
+  if (/\b(basketball|basketbol)\b/.test(key)) return 21;
+
+  if (/^(volleyball|voleybol)$/.test(key)) return 30;
+  if (/\b(volleyball|voleybol|voleyball)\b/.test(key)) return 31;
+
+  return 100;
+}
+
+function compareCategoryIds(a = '', b = '', language = 'en') {
+  const priorityA = categoryPriority(a);
+  const priorityB = categoryPriority(b);
+
+  if (priorityA !== priorityB) return priorityA - priorityB;
+  return cleanDisplayText(a).localeCompare(cleanDisplayText(b), localeForLanguage(language), { sensitivity: 'base' });
+}
+
 export function sortCategoryItems(a, b, language = 'en') {
-  if (a.id === ALL_CATEGORY) return -1;
-  if (b.id === ALL_CATEGORY) return 1;
-  return a.label.localeCompare(b.label, localeForLanguage(language), { sensitivity: 'base' });
+  return compareCategoryIds(a.id, b.id, language) ||
+    a.label.localeCompare(b.label, localeForLanguage(language), { sensitivity: 'base' });
 }
 
 export function groupByCategory(matches) {
@@ -153,7 +185,7 @@ export function groupByCategory(matches) {
     groups.get(category).push(match);
   }
 
-  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'en-US', { sensitivity: 'base' }));
+  return [...groups.entries()].sort(([a], [b]) => compareCategoryIds(a, b, 'en'));
 }
 
 export function formatMetaTime(value, language = 'en') {

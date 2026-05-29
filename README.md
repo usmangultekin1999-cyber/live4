@@ -4,6 +4,21 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 
 > Use this project only with stream sources and sports data feeds that you own or have permission to publish.
 
+## Changes in v23
+
+- Added SLA / SportLiveAPI Playback Links integration. The Worker can now load playable matches from the SLA `/lives/streams` API and map `liveList` stream lines to the existing ErosMacTV popup player.
+- Added support for multiple stream lines per match, including `m3u8`, DASH and direct playback options when the provider returns backup lines. FLV/RTMP links are kept as provider-direct iframe fallbacks instead of being proxied.
+- Added `MATCH_SOURCE_MODE` so you can use `merge`, `sla`, or `legacy` source mode.
+- The SLA auth key stays server-side in Cloudflare secrets and is never committed to GitHub or sent as a browser-visible frontend variable.
+
+## Changes in v21
+
+- Removed the left menu navigation items: Home, Live Now, Sports, Schedule, Favourites and Notifications.
+- Removed the sidebar More button. The sidebar now contains only Follow Us and Sports filters.
+- Made the desktop search box compact and right-aligned.
+- Forced category ordering everywhere: Football first, Basketball second, Volleyball third, then the remaining sports.
+- Kept popup player behaviour and direct-provider stream playback.
+
 ## Changes in this version
 
 - Site name remains `ErosMacTV` everywhere, including the header.
@@ -20,14 +35,14 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 
 ## Features
 
-- API proxy: `/api/matches`
+- API proxy: `/api/matches` for legacy stream API + optional SLA / SportLiveAPI playback links
 - Sports details proxy: `/api/match-details`
-- Cloudflare runtime secret support through `MATCH_API_KEY` and `SPORTS_API_KEY`
+- Cloudflare runtime secret support through `MATCH_API_KEY`, `SLA_API_AUTH` and `SPORTS_API_KEY`
 - Multilingual UI: EN, TR, DE, ES, ZH, HI, FR
 - Search by team or league
 - Category filters with translated common sports labels
 - Responsive match cards
-- HLS, DASH, MP4 and WebM player support without server-side stream proxying
+- HLS, DASH, MP4 and WebM player support without server-side stream proxying; FLV/RTMP sources use provider-direct iframe fallback
 - Iframe fallback for embed-style stream URLs
 - Detail panels hide gracefully when SportsAPI has no data for a match
 - SportsAPI diagnostic coverage messages are hidden from viewers when no matching SportsAPI event exists
@@ -72,17 +87,69 @@ Settings > Variables and Secrets
 Add these values:
 
 ```txt
-MATCH_API_KEY = your stream API key
+MATCH_API_KEY = your legacy stream API key
 MATCH_API_URL = https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php
+
+# SLA / SportLiveAPI playback links. Add SLA_API_AUTH as a Secret.
+SLA_API_AUTH = your SLA auth key
+SLA_API_URL = https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams
+# Optional if your provider gave you the /lives/page URL:
+SLA_API_PAGE_URL = https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/page
+# Optional: merge, sla, or legacy. Default is merge.
+MATCH_SOURCE_MODE = merge
+
 SPORTS_API_KEY = your SportsAPI key
 SPORTS_API_BASE_URL = https://sports-api.net/api
 # Optional only if you want the heavier odds-first SportsAPI search:
 # SPORTS_API_RICH_MODE = 1
 ```
 
-`MATCH_API_KEY` and `SPORTS_API_KEY` should be added as secrets. Do not upload `.env`, `.dev.vars`, or real API keys to GitHub.
+`MATCH_API_KEY`, `SLA_API_AUTH` and `SPORTS_API_KEY` should be added as secrets. Do not upload `.env`, `.dev.vars`, or real API keys to GitHub.
 
 You can also use `SPORTS_API_EVENTS_URL` instead of `SPORTS_API_KEY` + `SPORTS_API_BASE_URL` if you prefer storing the complete SportsAPI events URL in Cloudflare, but the recommended setup is to keep only the key in `SPORTS_API_KEY`.
+
+## SLA / SportLiveAPI integration
+
+The SLA integration uses Playback Links mode. The Worker requests the SLA API server-side, normalizes matches into the existing ErosMacTV match format, and sends the visitor browser the original provider playback URL directly. It does **not** proxy live manifests or media segments through Cloudflare.
+
+Recommended configuration:
+
+```txt
+SLA_API_AUTH = your SLA auth key
+SLA_API_URL = https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams
+MATCH_SOURCE_MODE = merge
+```
+
+If you want to use only the SLA API and ignore the old stream API, set:
+
+```txt
+MATCH_SOURCE_MODE = sla
+```
+
+If your provider specifically gave you a `/lives/page?auth=...` URL, do **not** commit that URL with the real auth key to GitHub. Add the auth key as `SLA_API_AUTH`; optionally set `SLA_API_PAGE_URL` to the page endpoint without the auth query. The Worker will try the page response first and fall back to the documented `/lives/streams` endpoint when needed.
+
+The default SLA sports requests include these type mappings:
+
+```txt
+1 Soccer / Football
+18 Basketball
+91 Volleyball
+94 Badminton
+16 Baseball
+3 Cricket
+13 Tennis
+17 Ice Hockey
+92 Table Tennis
+14 Snooker
+12 American Football
+151 E-sports with gameId 1, 2, 3 and 4
+```
+
+To override the requested SLA types:
+
+```txt
+SLA_API_TYPES = 1,18,91,94,151:1,151:2
+```
 
 ## Local development
 
@@ -95,8 +162,11 @@ npx wrangler dev
 For local development, create a `.dev.vars` file:
 
 ```txt
-MATCH_API_KEY="YOUR_STREAM_API_KEY"
+MATCH_API_KEY="YOUR_LEGACY_STREAM_API_KEY"
 MATCH_API_URL="https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php"
+SLA_API_AUTH="YOUR_SLA_AUTH_KEY"
+SLA_API_URL="https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams"
+MATCH_SOURCE_MODE="merge"
 SPORTS_API_KEY="YOUR_SPORTS_API_KEY"
 SPORTS_API_BASE_URL="https://sports-api.net/api"
 ```
@@ -124,7 +194,7 @@ The player never downloads or re-serves live video through Cloudflare. It gives 
 1. Direct video files such as `.mp4`, `.webm`, `.ogg`
 2. DASH `.mpd` streams
 3. HLS streams through `hls.js`
-4. Iframe fallback for embed-style sources
+4. Iframe fallback for embed-style, FLV or RTMP sources
 
 If a stream source blocks CORS, requires DRM, blocks your domain/referrer, or returns missing media files such as `404` for `.m3u8` segments, the frontend cannot bypass that. The stream provider must allow your domain and provide a working source.
 
@@ -142,3 +212,10 @@ This version intentionally has no `/api/stream`, `/proxy`, `/hls` or media relay
 ## v17 update
 
 The match player now opens as a fixed popup overlay again. A CSS override that caused the player to render at the bottom of the page has been removed, and the player is rendered through a React portal to prevent layout conflicts.
+
+
+## v20 changes
+
+- Removed the static Home/Live Now/Sports/Schedule/Favourites/Notifications links from the left menu.
+- Reduced and right-aligned the search area.
+- Prioritized Football, Basketball and Volleyball categories at the top of tabs, sidebar and sections.

@@ -1,6 +1,28 @@
 const DEFAULT_STREAM_API_URL = 'https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php';
 const DEFAULT_SPORTS_API_BASE_URL = 'https://sports-api.net/api';
 const DEFAULT_SPORTS_EVENTS_PATH = '/events';
+const DEFAULT_SLA_API_URL = 'https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams';
+const DEFAULT_SLA_PAGE_URL = 'https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/page';
+
+const SLA_TYPE_CONFIGS = [
+  { type: 1, category: 'Football' },
+  { type: 18, category: 'Basketball' },
+  { type: 91, category: 'Volleyball' },
+  { type: 94, category: 'Badminton' },
+  { type: 16, category: 'Baseball' },
+  { type: 3, category: 'Cricket' },
+  { type: 13, category: 'Tennis' },
+  { type: 17, category: 'Ice Hockey' },
+  { type: 92, category: 'Table Tennis' },
+  { type: 14, category: 'Snooker' },
+  { type: 12, category: 'American Football' },
+  { type: 151, gameId: 1, category: 'eSports' },
+  { type: 151, gameId: 2, category: 'eSports' },
+  { type: 151, gameId: 3, category: 'eSports' },
+  { type: 151, gameId: 4, category: 'eSports' }
+];
+
+const SLA_TYPE_CATEGORIES = new Map(SLA_TYPE_CONFIGS.map((item) => [String(item.type), item.category]));
 
 const CATEGORY_TRANSLATIONS = new Map([
   ['tumu', 'All'],
@@ -210,16 +232,67 @@ function cleanLeague(value) {
   return league ? `${time} | ${league}` : time;
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizeStreamType(value = '', url = '') {
+  const explicit = normalizeLookup(value).replace(/[^a-z0-9]+/g, '');
+  const lowerUrl = String(url || '').toLowerCase();
+
+  if (explicit.includes('m3u8') || /\.m3u8(?:$|[?#])/.test(lowerUrl)) return 'm3u8';
+  if (explicit.includes('flv') || /\.flv(?:$|[?#])/.test(lowerUrl)) return 'flv';
+  if (explicit.includes('rtmp') || /^rtmp:/i.test(url)) return 'rtmp';
+  if (explicit.includes('mpd') || /\.mpd(?:$|[?#])/.test(lowerUrl)) return 'mpd';
+  if (/\.(?:mp4|webm|ogv|ogg)(?:$|[?#])/.test(lowerUrl)) return 'direct';
+  return explicit || 'm3u8';
+}
+
+function normalizeStreamLine(line = {}, index = 0) {
+  const url = cleanString(line?.url || line?.playUrl || line?.play_url || line?.stream_url || line?.streamUrl);
+  const name = cleanDisplayText(line?.nameEn || line?.name_en || line?.label || line?.name || line?.title || `Line ${index + 1}`, `Line ${index + 1}`);
+  const type = normalizeStreamType(line?.type || line?.format, url);
+  const streamInfo = isPlainObject(line?.streamInfo) ? line.streamInfo : (isPlainObject(line?.stream_info) ? line.stream_info : null);
+
+  return {
+    id: cleanString(line?.id || line?.lineId || line?.line_id || `${index}-${type}-${name}`),
+    name,
+    type,
+    url,
+    isPlayed: line?.isPlayed !== false && line?.is_played !== false,
+    height: numberOrNull(streamInfo?.Height ?? streamInfo?.height),
+    width: numberOrNull(streamInfo?.Width ?? streamInfo?.width),
+    frameRate: numberOrNull(streamInfo?.FrameRate ?? streamInfo?.frameRate ?? streamInfo?.fps)
+  };
+}
+
+
 function normalizeMatch(match) {
+  const videoid = cleanString(match?.videoid);
+  const streams = Array.isArray(match?.streams)
+    ? match.streams
+        .map((line, index) => normalizeStreamLine(line, index))
+        .filter((line) => line.url)
+    : [];
+
   return {
     id: cleanString(match?.id),
+    source: cleanString(match?.source, 'primary'),
+    provider: cleanString(match?.provider, 'ErosMacTV'),
     category: toEnglishCategory(match?.category),
     league: cleanLeague(match?.league),
     home: cleanDisplayText(match?.home, 'Home'),
     away: cleanDisplayText(match?.away, 'Away'),
     home_icon: cleanString(match?.home_icon),
     away_icon: cleanString(match?.away_icon),
-    videoid: cleanString(match?.videoid)
+    videoid,
+    streams: streams.length ? streams : (videoid ? [normalizeStreamLine({ name: 'Main Stream', nameEn: 'Main Stream', url: videoid }, 0)] : []),
+    screenshot: cleanString(match?.screenshot),
+    progress: cleanDisplayText(match?.progress || match?.progressEn || ''),
+    home_score: numberOrNull(match?.home_score ?? match?.homeScore),
+    away_score: numberOrNull(match?.away_score ?? match?.awayScore)
   };
 }
 
@@ -286,7 +359,7 @@ async function fetchJson(url, options = {}) {
   return payload;
 }
 
-async function loadStreamMatches(env) {
+async function loadLegacyStreamMatches(env) {
   const apiKey = cleanString(env.MATCH_API_KEY);
   const apiUrl = cleanString(env.MATCH_API_URL, DEFAULT_STREAM_API_URL);
 
@@ -318,12 +391,450 @@ async function loadStreamMatches(env) {
   };
 }
 
+
+function hasSlaConfig(env = {}) {
+  if (String(env.SLA_API_ENABLED || '').trim() === '0') return false;
+  if (cleanString(env.SLA_API_AUTH || env.SLA_AUTH)) return true;
+
+  for (const key of ['SLA_API_URL', 'SLA_STREAM_API_URL', 'SLA_API_PAGE_URL', 'SLA_PAGE_URL']) {
+    const raw = cleanString(env[key]);
+    if (!raw) continue;
+    try {
+      const parsed = new URL(raw);
+      if (parsed.searchParams.get('auth')) return true;
+    } catch (error) {
+      // Ignore invalid optional URLs; the request path will surface errors if enabled explicitly.
+    }
+  }
+
+  return false;
+}
+
+function extractSlaUrlConfig(rawUrl, fallbackUrl, auth) {
+  let url;
+  let extractedAuth = auth;
+
+  try {
+    url = new URL(cleanString(rawUrl, fallbackUrl));
+    extractedAuth ||= cleanString(url.searchParams.get('auth'));
+    url.searchParams.delete('auth');
+  } catch (error) {
+    const err = new Error('SLA_API_URL is not a valid URL.');
+    err.status = 500;
+    throw err;
+  }
+
+  return { url, auth: extractedAuth };
+}
+
+function getSlaConfig(env = {}) {
+  let auth = cleanString(env.SLA_API_AUTH || env.SLA_AUTH);
+  const rawApiUrl = cleanString(env.SLA_API_URL || env.SLA_STREAM_API_URL, DEFAULT_SLA_API_URL);
+  const rawPageUrl = cleanString(env.SLA_API_PAGE_URL || env.SLA_PAGE_URL);
+
+  const stream = extractSlaUrlConfig(rawApiUrl, DEFAULT_SLA_API_URL, auth);
+  auth = stream.auth;
+
+  let page = null;
+  if (rawPageUrl || /\/lives\/page\/?$/i.test(stream.url.pathname)) {
+    page = extractSlaUrlConfig(rawPageUrl || stream.url.toString(), DEFAULT_SLA_PAGE_URL, auth);
+    auth = page.auth;
+  }
+
+  if (!auth) {
+    const err = new Error('SLA_API_AUTH is not defined as a Cloudflare secret.');
+    err.status = 500;
+    throw err;
+  }
+
+  return {
+    auth,
+    streamUrl: stream.url,
+    pageUrl: page?.url || null,
+    isPlayed: cleanString(env.SLA_API_IS_PLAYED, '1')
+  };
+}
+
+function getSlaTypeConfigs(env = {}) {
+  const raw = cleanString(env.SLA_API_TYPES);
+  if (!raw) return SLA_TYPE_CONFIGS;
+
+  const output = [];
+  for (const token of raw.split(/[\s,;|]+/).map((item) => item.trim()).filter(Boolean)) {
+    const match = token.match(/^(\d+)(?::(\d+))?$/);
+    if (!match) continue;
+    const type = Number.parseInt(match[1], 10);
+    const gameId = match[2] ? Number.parseInt(match[2], 10) : undefined;
+    if (!Number.isFinite(type)) continue;
+    output.push({
+      type,
+      gameId: Number.isFinite(gameId) ? gameId : undefined,
+      category: SLA_TYPE_CATEGORIES.get(String(type)) || `Sport ${type}`
+    });
+  }
+
+  return output.length ? output : SLA_TYPE_CONFIGS;
+}
+
+function slaRequestUrl(baseUrl, config, typeConfig = null) {
+  const url = new URL(baseUrl.toString());
+  url.searchParams.set('auth', config.auth);
+
+  if (typeConfig?.type) url.searchParams.set('type', String(typeConfig.type));
+  if (typeConfig?.gameId) url.searchParams.set('gameId', String(typeConfig.gameId));
+  if (config.isPlayed !== '') url.searchParams.set('isPlayed', String(config.isPlayed));
+
+  return url;
+}
+
+async function fetchSlaJson(url, options = {}) {
+  const payload = await fetchJson(url, {
+    cacheTtl: 30,
+    timeoutMs: 9000,
+    userAgent: 'ErosMacTV-SLA-integration/1.0',
+    ...options
+  });
+
+  const errCode = payload?.errCode;
+  if (errCode !== undefined && errCode !== null && Number(errCode) !== 0) {
+    const err = new Error(cleanDisplayText(payload?.errMsg || payload?.message || `SLA API returned errCode ${errCode}.`));
+    err.status = Number(errCode) === 99 ? 429 : 502;
+    err.payload = payload;
+    throw err;
+  }
+
+  return payload;
+}
+
+function unwrapSlaEvents(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.events)) return payload.events;
+  if (Array.isArray(payload.items)) return payload.items;
+  if (Array.isArray(payload.results)) return payload.results;
+  if (Array.isArray(payload.list)) return payload.list;
+  if (Array.isArray(payload.records)) return payload.records;
+  if (Array.isArray(payload.rows)) return payload.rows;
+  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  if (Array.isArray(payload?.data?.events)) return payload.data.events;
+  if (Array.isArray(payload?.data?.items)) return payload.data.items;
+  if (Array.isArray(payload?.data?.list)) return payload.data.list;
+  if (Array.isArray(payload?.data?.records)) return payload.data.records;
+  if (Array.isArray(payload?.data?.rows)) return payload.data.rows;
+  if (Array.isArray(payload?.page?.list)) return payload.page.list;
+  if (Array.isArray(payload?.payload?.data)) return payload.payload.data;
+  if (Array.isArray(payload?.payload?.list)) return payload.payload.list;
+  return [];
+}
+
+function inferStreamType(url = '', explicit = '') {
+  const cleanType = cleanDisplayText(explicit).toLowerCase();
+  if (cleanType) return cleanType;
+  const cleanUrl = cleanString(url).toLowerCase();
+  if (/\.mpd(?:$|[?#])/.test(cleanUrl)) return 'mpd';
+  if (/\.flv(?:$|[?#])/.test(cleanUrl)) return 'flv';
+  if (/\.mp4(?:$|[?#])/.test(cleanUrl)) return 'mp4';
+  if (/\.m3u8(?:$|[?#])/.test(cleanUrl)) return 'm3u8';
+  return 'm3u8';
+}
+
+function normalizeSlaStream(line = {}, index = 0) {
+  const url = cleanString(pick(line, ['url', 'playUrl', 'play_url', 'streamUrl', 'stream_url', 'm3u8', 'flv', 'rtmp']));
+  if (!/^https?:\/\//i.test(url)) return null;
+
+  const streamInfo = line?.streamInfo || line?.stream_info || {};
+  const type = inferStreamType(url, pick(line, ['type', 'format']));
+  const height = Number.parseInt(cleanString(pick(streamInfo, ['Height', 'height', 'h'])), 10);
+  const width = Number.parseInt(cleanString(pick(streamInfo, ['Width', 'width', 'w'])), 10);
+  const frameRate = cleanString(pick(streamInfo, ['FrameRate', 'frameRate', 'fps']));
+  const rawName = pick(line, ['nameEn', 'name_en', 'lineNameEn', 'line_name_en', 'name', 'lineName', 'label'], '');
+  const fallbackName = type ? type.toUpperCase() : `Line ${index + 1}`;
+
+  return compactObject({
+    id: cleanString(pick(line, ['id', 'lineId', 'line_id']), `line-${index + 1}`),
+    name: cleanDisplayText(rawName, fallbackName),
+    url,
+    type,
+    isPlayed: line?.isPlayed === false || line?.played === false || line?.playable === false ? false : true,
+    height: Number.isFinite(height) ? height : undefined,
+    width: Number.isFinite(width) ? width : undefined,
+    frameRate
+  });
+}
+
+function streamRank(stream = {}) {
+  const name = normalizeLookup(`${stream.name || ''} ${stream.type || ''}`);
+  let rank = 0;
+  if (/fhd|full\s*hd|1080|original/.test(name)) rank += 120;
+  if (/global\s*hd|hd|高清/.test(name)) rank += 90;
+  if (/cn|tw|hk|channel/.test(name)) rank += 40;
+  if (/web|聚合/.test(name)) rank += 30;
+  if (stream.isPlayed) rank += 20;
+  if (Number.isFinite(Number(stream.height))) rank += Math.min(Number(stream.height) / 20, 80);
+  return rank;
+}
+
+function chooseBestStream(streams = []) {
+  return [...streams]
+    .filter((stream) => stream?.url && stream.isPlayed !== false)
+    .sort((a, b) => streamRank(b) - streamRank(a))[0] ||
+    streams.find((stream) => stream?.url) ||
+    null;
+}
+
+function formatSlaStartTime(row = {}) {
+  const dateStr = cleanString(pick(row, ['dateStr', 'date_str', 'startTimeText', 'start_time_text']));
+  const dateStrMatch = dateStr.match(/(?:^|\s|T)(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (dateStrMatch) return `${String(Number.parseInt(dateStrMatch[1], 10)).padStart(2, '0')}:${dateStrMatch[2]}`;
+
+  const rawSeconds = pick(row, ['date', 'startTime', 'start_time', 'timestamp'], '');
+  const seconds = Number(rawSeconds);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    const date = new Date(seconds > 10_000_000_000 ? seconds : seconds * 1000);
+    if (!Number.isNaN(date.getTime())) {
+      return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+    }
+  }
+
+  return '';
+}
+
+function slaCategory(row = {}, context = {}) {
+  const explicit = cleanDisplayText(pick(row, ['sportName', 'sportNameEn', 'sport', 'category']));
+  if (explicit) return toEnglishCategory(explicit);
+  const type = cleanString(pick(row, ['type'], context.type));
+  return SLA_TYPE_CATEGORIES.get(String(type)) || context.category || 'Other';
+}
+
+function fallbackIdFromText(value = '') {
+  let hash = 0;
+  const text = cleanString(value);
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function normalizeSlaMatch(row = {}, context = {}) {
+  const category = slaCategory(row, context);
+  const leagueName = cleanDisplayText(pick(row, ['leagueNameEn', 'league_name_en', 'leagueEn', 'competitionNameEn', 'leagueName', 'league_name', 'competition', 'league']), 'Live Event');
+  const time = formatSlaStartTime(row);
+  const home = cleanDisplayText(pick(row, ['homeEn', 'home_en', 'homeNameEn', 'homeName', 'home', 'team1']), 'Home');
+  const away = cleanDisplayText(pick(row, ['awayEn', 'away_en', 'awayNameEn', 'awayName', 'away', 'team2']), 'Away');
+  const rawId = cleanString(pick(row, ['matchId', 'match_id', 'id', 'eventId', 'event_id']));
+  const liveRows = Array.isArray(row?.liveList) ? row.liveList
+    : Array.isArray(row?.live_list) ? row.live_list
+    : Array.isArray(row?.streams) ? row.streams
+    : Array.isArray(row?.urls) ? row.urls
+    : [];
+
+  const directUrl = cleanString(pick(row, ['url', 'playUrl', 'play_url', 'streamUrl', 'stream_url', 'm3u8']));
+  const streams = liveRows.map((line, index) => normalizeSlaStream(line, index)).filter(Boolean);
+  if (directUrl) {
+    const directStream = normalizeSlaStream({ url: directUrl, type: pick(row, ['streamType', 'format', 'type']), nameEn: 'Main Stream', isPlayed: true }, streams.length);
+    if (directStream) streams.push(directStream);
+  }
+
+  const uniqueStreams = [];
+  const seenUrls = new Set();
+  for (const stream of streams) {
+    if (!stream?.url || seenUrls.has(stream.url)) continue;
+    seenUrls.add(stream.url);
+    uniqueStreams.push(stream);
+  }
+
+  const bestStream = chooseBestStream(uniqueStreams);
+  const idBase = rawId || fallbackIdFromText(`${category}|${leagueName}|${home}|${away}|${time}`);
+
+  return compactObject({
+    id: `sla:${idBase}`,
+    source: 'sla',
+    upstream_id: rawId,
+    category,
+    league: time ? `${time} | ${leagueName}` : leagueName,
+    home,
+    away,
+    home_icon: cleanString(pick(row, ['homeLogo', 'home_logo', 'homeImage', 'home_image'])),
+    away_icon: cleanString(pick(row, ['awayLogo', 'away_logo', 'awayImage', 'away_image'])),
+    league_icon: cleanString(pick(row, ['leagueLogo', 'league_logo'])),
+    screenshot: cleanString(pick(row, ['screenshot', 'cover', 'preview'])),
+    home_score: pick(row, ['homeScore', 'home_score'], undefined),
+    away_score: pick(row, ['awayScore', 'away_score'], undefined),
+    progress: cleanDisplayText(pick(row, ['progressEn', 'progress_en', 'progress', 'statusText'])),
+    is_played: row?.isPlayed === false ? false : true,
+    streams: uniqueStreams,
+    videoid: bestStream?.url || ''
+  });
+}
+
+async function loadSlaPageMatches(config) {
+  if (!config.pageUrl) return [];
+  const pageUrl = slaRequestUrl(config.pageUrl, config, null);
+  const payload = await fetchSlaJson(pageUrl, { cacheTtl: 30, timeoutMs: 9000 });
+  return unwrapSlaEvents(payload).map((row) => normalizeSlaMatch(row)).filter((match) => match.id && match.videoid);
+}
+
+async function loadSlaTypedMatches(config, env = {}) {
+  const typeConfigs = getSlaTypeConfigs(env);
+  const requests = typeConfigs.map(async (typeConfig) => {
+    const url = slaRequestUrl(config.streamUrl, config, typeConfig);
+    const payload = await fetchSlaJson(url, { cacheTtl: 30, timeoutMs: 9000 });
+    return unwrapSlaEvents(payload).map((row) => normalizeSlaMatch(row, typeConfig));
+  });
+
+  const settled = await Promise.allSettled(requests);
+  const matches = [];
+  const failures = [];
+
+  for (const result of settled) {
+    if (result.status !== 'fulfilled') {
+      failures.push(result.reason);
+      continue;
+    }
+    matches.push(...result.value);
+  }
+
+  if (!matches.length && failures.length === settled.length && failures[0]) {
+    throw failures[0];
+  }
+
+  return matches.filter((match) => match.id && match.videoid);
+}
+
+async function loadSlaMatches(env) {
+  if (!hasSlaConfig(env)) {
+    return {
+      success: true,
+      configured: false,
+      count: 0,
+      data: []
+    };
+  }
+
+  const config = getSlaConfig(env);
+  let data = [];
+
+  if (config.pageUrl) {
+    try {
+      data = await loadSlaPageMatches(config);
+    } catch (error) {
+      // If the user pasted the undocumented /lives/page URL and it does not return
+      // the playable schema, fall back to the documented /lives/streams endpoint on
+      // the same origin.
+      data = [];
+    }
+  }
+
+  if (!data.length) {
+    const streamUrl = new URL(config.streamUrl.toString());
+    if (/\/lives\/page\/?$/i.test(streamUrl.pathname)) {
+      streamUrl.pathname = streamUrl.pathname.replace(/\/lives\/page\/?$/i, '/lives/streams');
+      config.streamUrl = streamUrl;
+    }
+    data = await loadSlaTypedMatches(config, env);
+  }
+
+  return {
+    success: true,
+    configured: true,
+    count: data.length,
+    generated_at: new Date().toISOString(),
+    expires_in: '30 seconds',
+    data
+  };
+}
+
+function dedupeMergedMatches(matches = []) {
+  const output = [];
+  const seenIds = new Set();
+  const seenKeys = new Map();
+
+  for (const match of matches) {
+    if (!match?.id) continue;
+    const id = String(match.id);
+    if (seenIds.has(id)) continue;
+
+    const time = parseLeagueTime(match.league)?.value || '';
+    const key = [normalizeSport(match.category), normalizeTeamName(match.home), normalizeTeamName(match.away), time]
+      .filter(Boolean)
+      .join('|');
+
+    if (key && seenKeys.has(key)) {
+      const existingIndex = seenKeys.get(key);
+      const existing = output[existingIndex];
+      // Prefer SLA playback links if they cover the same event, but keep missing icons
+      // from the legacy list when the SLA row has no image.
+      if (match.source === 'sla' && existing?.source !== 'sla') {
+        output[existingIndex] = {
+          ...existing,
+          ...match,
+          home_icon: match.home_icon || existing.home_icon,
+          away_icon: match.away_icon || existing.away_icon
+        };
+      }
+      continue;
+    }
+
+    seenIds.add(id);
+    if (key) seenKeys.set(key, output.length);
+    output.push(match);
+  }
+
+  return output;
+}
+
 export async function handleMatches(env) {
   try {
-    const payload = await loadStreamMatches(env);
+    const sourceMode = normalizeLookup(env.MATCH_SOURCE_MODE || 'merge');
+    const useLegacy = !['sla', 'sla only', 'sla-only'].includes(sourceMode);
+    const useSla = !['legacy', 'legacy only', 'legacy-only', 'match', 'match only', 'match-only'].includes(sourceMode);
 
-    return jsonResponse(payload, 200, {
-      'Cache-Control': 'public, max-age=30, s-maxage=90'
+    const sources = [];
+
+    if (useSla && hasSlaConfig(env)) {
+      sources.push(loadSlaMatches(env).catch((error) => ({ success: false, source: 'sla', error })));
+    }
+
+    if (useLegacy && cleanString(env.MATCH_API_KEY)) {
+      sources.push(loadLegacyStreamMatches(env).catch((error) => ({ success: false, source: 'legacy', error })));
+    }
+
+    if (!sources.length) {
+      const err = new Error('No match source is configured. Add SLA_API_AUTH and/or MATCH_API_KEY as Cloudflare secrets.');
+      err.status = 500;
+      throw err;
+    }
+
+    const results = await Promise.all(sources);
+    const errors = [];
+    const allMatches = [];
+
+    for (const result of results) {
+      if (result?.success && Array.isArray(result.data)) {
+        allMatches.push(...result.data);
+      } else if (result?.error) {
+        errors.push(cleanDisplayText(result.error?.message || result.error));
+      }
+    }
+
+    const data = dedupeMergedMatches(allMatches);
+
+    if (!data.length && errors.length) {
+      const err = new Error(errors[0] || 'Could not load the match list.');
+      err.status = 502;
+      throw err;
+    }
+
+    return jsonResponse({
+      success: true,
+      count: data.length,
+      generated_at: new Date().toISOString(),
+      expires_in: hasSlaConfig(env) ? '30 seconds' : '2 minutes',
+      source_errors: errors.length ? errors : undefined,
+      data
+    }, 200, {
+      'Cache-Control': hasSlaConfig(env) ? 'public, max-age=20, s-maxage=30' : 'public, max-age=30, s-maxage=90'
     });
   } catch (error) {
     return jsonResponse(
@@ -337,6 +848,7 @@ export async function handleMatches(env) {
     );
   }
 }
+
 
 function getSportsConfig(env) {
   const fullEventsUrl = cleanString(env.SPORTS_API_EVENTS_URL);

@@ -5,10 +5,14 @@ import { cleanDisplayText, parseLeague } from '../lib/helpers.js';
 import { fetchMatchDetails } from '../lib/api.js';
 import { t } from '../lib/i18n.js';
 
-function streamKind(url = '') {
-  const clean = String(url).toLowerCase();
-  if (/\.mpd($|\?)/.test(clean)) return 'dash';
-  if (/\.(mp4|webm|ogv|ogg)($|\?)/.test(clean)) return 'direct';
+function streamKind(url = '', explicitType = '') {
+  const type = String(explicitType || '').toLowerCase();
+  const clean = String(url || '').toLowerCase();
+
+  if (type.includes('rtmp') || /^rtmp:/i.test(url)) return 'rtmp';
+  if (type.includes('flv') || /\.flv($|\?)/.test(clean)) return 'flv';
+  if (type.includes('mpd') || /\.mpd($|\?)/.test(clean)) return 'dash';
+  if (type.includes('mp4') || /\.(mp4|webm|ogv|ogg)($|\?)/.test(clean)) return 'direct';
   return 'hls';
 }
 
@@ -38,14 +42,30 @@ export default function StreamPlayer({ match, onClose, language }) {
   const [detailsStatus, setDetailsStatus] = useState('ready');
   const [details, setDetails] = useState(null);
   const [detailsError, setDetailsError] = useState('');
-  const streamUrl = useMemo(() => directStreamUrl(match?.videoid), [match]);
+  const [selectedStreamIndex, setSelectedStreamIndex] = useState(0);
+  const streamOptions = useMemo(() => {
+    const options = Array.isArray(match?.streams)
+      ? match.streams.filter((stream) => stream?.url)
+      : [];
+
+    if (options.length) return options;
+    return match?.videoid ? [{ id: 'main', name: 'Main Stream', url: match.videoid, type: '' }] : [];
+  }, [match]);
+  const activeStream = streamOptions[Math.min(selectedStreamIndex, Math.max(streamOptions.length - 1, 0))] || null;
+  const streamUrl = useMemo(() => directStreamUrl(activeStream?.url || match?.videoid), [activeStream?.url, match?.videoid]);
+  const isChannel = Boolean(match?.is_channel);
   const { time, league } = parseLeague(match?.league || '', language);
   const home = cleanDisplayText(match?.home, 'Home');
-  const away = cleanDisplayText(match?.away, 'Away');
+  const away = isChannel ? '' : cleanDisplayText(match?.away, 'Away');
+  const displayTitle = isChannel || !away ? home : `${home} ${t(language, 'vs')} ${away}`;
 
 
   useEffect(() => {
-    if (!match?.id) {
+    setSelectedStreamIndex(0);
+  }, [match?.id]);
+
+  useEffect(() => {
+    if (!match?.id || match?.is_channel) {
       setDetailsStatus('ready');
       setDetails(null);
       setDetailsError('');
@@ -134,7 +154,7 @@ export default function StreamPlayer({ match, onClose, language }) {
         setMessage('');
       };
 
-      const kind = streamKind(streamUrl);
+      const kind = streamKind(streamUrl, activeStream?.type);
 
       if (kind === 'direct') {
         startDirect();
@@ -153,6 +173,14 @@ export default function StreamPlayer({ match, onClose, language }) {
         } catch (error) {
           startFallback();
         }
+        return;
+      }
+
+      if (kind === 'flv' || kind === 'rtmp') {
+        // Browser-native FLV/RTMP playback is not reliable without a media engine.
+        // Use iframe fallback and keep the stream URL on the provider domain instead
+        // of proxying it through our Worker.
+        startFallback();
         return;
       }
 
@@ -212,7 +240,7 @@ export default function StreamPlayer({ match, onClose, language }) {
         video.load();
       }
     };
-  }, [streamUrl, language]);
+  }, [streamUrl, activeStream?.type, language]);
 
   const overlay = (
     <div className="player-overlay" role="dialog" aria-modal="true" aria-label={t(language, 'playerLabel')}>
@@ -222,7 +250,7 @@ export default function StreamPlayer({ match, onClose, language }) {
         <header className="player-header">
           <div>
             <span className="live-chip"><i /> {t(language, 'liveBroadcast')}</span>
-            <h2>{home} <span>{t(language, 'vs')}</span> {away}</h2>
+            <h2>{isChannel || !away ? displayTitle : <>{home} <span>{t(language, 'vs')}</span> {away}</>}</h2>
             <p>{time ? `${time} | ` : ''}{league}</p>
           </div>
 
@@ -230,6 +258,22 @@ export default function StreamPlayer({ match, onClose, language }) {
             ×
           </button>
         </header>
+
+        {streamOptions.length > 1 && (
+          <div className="stream-line-tabs" aria-label="Stream lines">
+            {streamOptions.map((stream, index) => (
+              <button
+                key={`${stream.id || stream.url}-${index}`}
+                type="button"
+                className={index === selectedStreamIndex ? 'is-active' : ''}
+                onClick={() => setSelectedStreamIndex(index)}
+              >
+                <span>{cleanDisplayText(stream.name, `Line ${index + 1}`)}</span>
+                {stream.height ? <em>{stream.height}p</em> : null}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="video-shell">
           {mode === 'loading' && (
@@ -256,7 +300,7 @@ export default function StreamPlayer({ match, onClose, language }) {
           {mode === 'fallback' && (
             <iframe
               ref={iframeRef}
-              title={`${home} ${t(language, 'vs')} ${away} stream`}
+              title={`${displayTitle} stream`}
               src={streamUrl}
               allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
               allowFullScreen
@@ -265,13 +309,15 @@ export default function StreamPlayer({ match, onClose, language }) {
           )}
         </div>
 
-        <MatchInsights
-          details={details}
-          status={detailsStatus}
-          error={detailsError}
-          match={match}
-          language={language}
-        />
+        {!isChannel && (
+          <MatchInsights
+            details={details}
+            status={detailsStatus}
+            error={detailsError}
+            match={match}
+            language={language}
+          />
+        )}
       </section>
     </div>
   );

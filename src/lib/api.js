@@ -4,15 +4,37 @@ function cleanUrl(value = '') {
   return value === null || value === undefined ? '' : String(value).trim();
 }
 
+function normalizeClientStream(stream = {}, index = 0) {
+  return {
+    id: cleanDisplayText(stream.id, `line-${index + 1}`),
+    name: cleanDisplayText(stream.name, `Line ${index + 1}`),
+    url: cleanUrl(stream.url),
+    type: cleanDisplayText(stream.type),
+    isPlayed: stream.isPlayed !== false,
+    height: Number.isFinite(Number(stream.height)) ? Number(stream.height) : undefined,
+    width: Number.isFinite(Number(stream.width)) ? Number(stream.width) : undefined,
+    frameRate: cleanDisplayText(stream.frameRate)
+  };
+}
+
 function normalizeClientMatch(match = {}) {
   return {
     id: cleanDisplayText(match.id),
+    source: cleanDisplayText(match.source),
+    upstream_id: cleanDisplayText(match.upstream_id),
     category: cleanDisplayText(match.category, 'Other'),
     league: cleanDisplayText(match.league),
     home: cleanDisplayText(match.home, 'Home'),
     away: cleanDisplayText(match.away, 'Away'),
     home_icon: cleanUrl(match.home_icon),
     away_icon: cleanUrl(match.away_icon),
+    league_icon: cleanUrl(match.league_icon),
+    screenshot: cleanUrl(match.screenshot),
+    home_score: match.home_score,
+    away_score: match.away_score,
+    progress: cleanDisplayText(match.progress),
+    is_played: match.is_played !== false,
+    streams: Array.isArray(match.streams) ? match.streams.map(normalizeClientStream).filter((stream) => stream.url) : [],
     videoid: cleanUrl(match.videoid)
   };
 }
