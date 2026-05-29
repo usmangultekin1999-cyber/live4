@@ -46,6 +46,11 @@ function Header({ query, onQueryChange, language, onLanguageChange }) {
           />
         </label>
 
+        <button className="notification-button" type="button" aria-label="Notifications">
+          <span aria-hidden="true">♧</span>
+          <i aria-hidden="true">3</i>
+        </button>
+
         <label className="language-control">
           <span aria-hidden="true">🌐</span>
           <select
@@ -77,7 +82,8 @@ function TopCategoryTabs({ categories, activeCategory, onChange, language }) {
               className={`top-category-tab ${active ? 'is-active' : ''}`}
               onClick={() => onChange(category.id)}
             >
-              {category.label}
+              <span className="top-category-icon" aria-hidden="true">{categoryIcon(category.id)}</span>
+              <span>{category.label}</span>
             </button>
           );
         })}

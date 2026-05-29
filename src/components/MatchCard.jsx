@@ -1,5 +1,5 @@
 import TeamLogo from './TeamLogo.jsx';
-import { cleanDisplayText, parseLeague } from '../lib/helpers.js';
+import { cleanDisplayText, getCategoryBackground, getCategoryVisualKey, parseLeague } from '../lib/helpers.js';
 import { t, translateCategory } from '../lib/i18n.js';
 
 export default function MatchCard({ match, onOpen, language }) {
@@ -9,11 +9,14 @@ export default function MatchCard({ match, onOpen, language }) {
   const category = match.category ? translateCategory(cleanDisplayText(match.category), language) : t(language, 'streamBadge');
   const disabled = !match.videoid;
   const liveLabel = t(language, 'live');
+  const visualKey = getCategoryVisualKey(match);
+  const backgroundUrl = getCategoryBackground(match);
 
   return (
     <button
       type="button"
-      className={`match-card broadcast-card ${disabled ? 'is-disabled' : 'is-live'}`}
+      className={`match-card broadcast-card broadcast-card--${visualKey} ${disabled ? 'is-disabled' : 'is-live'}`}
+      style={{ '--match-bg': `url(${backgroundUrl})` }}
       onClick={() => !disabled && onOpen(match)}
       disabled={disabled}
       aria-label={t(language, 'openMatchAria', { home, away })}

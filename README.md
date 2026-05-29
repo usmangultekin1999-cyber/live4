@@ -231,3 +231,14 @@ Visual changes:
 - Light modern match cards with green live badges.
 - Existing match APIs, SLA integration and SportsAPI details remain available.
 
+
+## v26 category artwork redesign
+
+This build keeps the v23/v25 non-IPTV data flow and updates the interface to the green/white sports layout. Match cards now use the six uploaded category background images:
+
+- Football, futsal, beach football and similar football categories: `01-futbol-arka-plan.png`
+- Volleyball and beach volleyball: `02-voleybol-arka-plan.png`
+- Basketball: `03-basketbol-arka-plan.png`
+- Badminton: `04-badminton-arka-plan.png`
+- Baseball: `05-baseball-arka-plan.png`
+- FIFA, Dota, eSports and other esports categories: `06-esports-arka-plan.png`

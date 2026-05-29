@@ -127,6 +127,37 @@ export function getCategoryId(match) {
   return category || OTHER_CATEGORY;
 }
 
+export function getCategoryVisualKey(categoryOrMatch = '') {
+  const raw = typeof categoryOrMatch === 'object' && categoryOrMatch !== null
+    ? [categoryOrMatch.category, categoryOrMatch.league, categoryOrMatch.home, categoryOrMatch.away].filter(Boolean).join(' ')
+    : String(categoryOrMatch || '');
+
+  const key = normalizeText(raw);
+
+  if (/\b(esport|e-sport|espor|fifa|ea sports|fc24|pes|dota|cs:?go|counter strike|lol|league of legends|valorant|pubg|mortal kombat|nba2k|nhl\s*2k|virtual)\b/.test(key)) return 'esports';
+  if (/\b(basketball|basketbol|table basketball|bskt|nba|euroleague)\b/.test(key)) return 'basketball';
+  if (/\b(volleyball|voleybol|voleyball|beach volleyball|plaj voleybol|vnl|cev)\b/.test(key)) return 'volleyball';
+  if (/\b(badminton|shuttle)\b/.test(key)) return 'badminton';
+  if (/\b(baseball|beyzbol|mlb|lmb)\b/.test(key)) return 'baseball';
+  if (/\b(football|futbol|soccer|beach football|plaj futbol|mini football|mermer futbol)\b/.test(key)) return 'football';
+
+  return 'football';
+}
+
+export function getCategoryBackground(categoryOrMatch = '') {
+  const visualKey = getCategoryVisualKey(categoryOrMatch);
+  const backgrounds = {
+    football: '/01-futbol-arka-plan.png',
+    volleyball: '/02-voleybol-arka-plan.png',
+    basketball: '/03-basketbol-arka-plan.png',
+    badminton: '/04-badminton-arka-plan.png',
+    baseball: '/05-baseball-arka-plan.png',
+    esports: '/06-esports-arka-plan.png'
+  };
+
+  return backgrounds[visualKey] || backgrounds.football;
+}
+
 export function isMatchSearchHit(match, query) {
   const q = normalizeText(query);
   if (!q) return true;
