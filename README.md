@@ -277,3 +277,21 @@ Resolution order for `/api/match-details`:
 3. Empty/silent response if no matching data exists.
 
 The integration queries livescores and nearby fixtures using `participants;scores;events;statistics;lineups;state;league;venue`, then matches by home team, away team, league and time.
+
+## v32 Official Odds Integration
+
+The player now supports an official odds board below the video area. It does not use SportMonks or SportsAPI for odds. Configure an official odds provider, such as The Odds API v4, through Cloudflare Variables and Secrets:
+
+```text
+ODDS_API_ENABLED=1
+ODDS_API_KEY=your_the_odds_api_key_here
+ODDS_API_BASE_URL=https://api.the-odds-api.com/v4
+ODDS_API_REGIONS=eu,uk
+ODDS_API_MARKETS=h2h,totals,spreads
+ODDS_API_MAX_SPORT_KEYS=8
+ODDS_REDIRECT_URL=https://cryptobet545.com
+```
+
+`ODDS_API_KEY` must be a Secret. When a visitor clicks an odd, it opens `ODDS_REDIRECT_URL` in a new tab.
+
+If the official odds provider does not contain the same match, the odds board is hidden instead of showing fake or generated odds.

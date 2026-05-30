@@ -82,6 +82,81 @@ function PlayerStandings({ standings = [], language }) {
   );
 }
 
+
+function officialOddsMarkets(details = {}) {
+  const data = details?.official_odds || details?.officialOdds || null;
+  const markets = Array.isArray(data?.markets) ? data.markets : [];
+  return markets
+    .map((market) => ({
+      name: cleanDisplayText(market.name, 'Market'),
+      bookmaker: cleanDisplayText(market.bookmaker, ''),
+      redirectUrl: cleanDisplayText(market.redirect_url || data.redirect_url || 'https://cryptobet545.com'),
+      outcomes: Array.isArray(market.outcomes)
+        ? market.outcomes
+            .map((outcome) => ({
+              name: cleanDisplayText(outcome.name, 'Selection'),
+              odds: cleanDisplayText(outcome.odds, ''),
+              side: cleanDisplayText(outcome.side, '')
+            }))
+            .filter((outcome) => outcome.name && outcome.odds)
+        : []
+    }))
+    .filter((market) => market.outcomes.length)
+    .slice(0, 4);
+}
+
+function safeBetUrl(value = '') {
+  const fallback = 'https://cryptobet545.com';
+  try {
+    const parsed = new URL(value || fallback);
+    return /^https?:$/i.test(parsed.protocol) ? parsed.href : fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function OfficialOddsBoard({ details, language }) {
+  const markets = officialOddsMarkets(details);
+  if (!markets.length) return null;
+
+  return (
+    <section className="official-odds-board" aria-label={t(language, 'officialOdds')}>
+      <div className="official-odds-head">
+        <div>
+          <span>{t(language, 'officialOdds')}</span>
+          <h3>{t(language, 'matchOdds')}</h3>
+        </div>
+        <small>{t(language, 'tapOddsToBet')}</small>
+      </div>
+
+      <div className="official-odds-grid">
+        {markets.map((market) => (
+          <article className="official-odds-market" key={`${market.name}-${market.bookmaker}`}>
+            <div className="official-market-title">
+              <strong>{market.name}</strong>
+              {market.bookmaker && <em>{market.bookmaker}</em>}
+            </div>
+            <div className="official-outcomes">
+              {market.outcomes.slice(0, 4).map((outcome) => (
+                <a
+                  className={`official-odd-chip ${outcome.side ? `is-${outcome.side}` : ''}`}
+                  key={`${market.name}-${outcome.name}-${outcome.odds}`}
+                  href={safeBetUrl(market.redirectUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer sponsored"
+                >
+                  <span>{outcome.name}</span>
+                  <strong>{outcome.odds}</strong>
+                </a>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function StreamPlayer({ match, onClose, language }) {
   const videoRef = useRef(null);
   const iframeRef = useRef(null);
@@ -361,6 +436,8 @@ export default function StreamPlayer({ match, onClose, language }) {
 
           <PlayerStandings standings={standings} language={language} />
         </div>
+
+        {!isChannel && <OfficialOddsBoard details={details} language={language} />}
 
         {!isChannel && (
           <MatchInsights

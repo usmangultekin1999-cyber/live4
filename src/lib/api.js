@@ -91,6 +91,7 @@ function normalizeDetailsPayload(payload = {}) {
     event: payload.event || null,
     stats: Array.isArray(payload.stats) ? payload.stats : [],
     odds: Array.isArray(payload.odds) ? payload.odds : [],
+    official_odds: payload.official_odds || null,
     timeline: Array.isArray(payload.timeline) ? payload.timeline : [],
     lineups: payload.lineups || null,
     related: Array.isArray(payload.related) ? payload.related : []

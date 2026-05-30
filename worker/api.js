@@ -1009,6 +1009,209 @@ function getSportmonksConfig(env = {}) {
   return { token, baseUrl, enabled: !/^(?:0|false|no|off)$/i.test(enabledFlag) && Boolean(token) };
 }
 
+
+const DEFAULT_ODDS_API_BASE_URL = 'https://api.the-odds-api.com/v4';
+const DEFAULT_ODDS_REDIRECT_URL = 'https://cryptobet545.com';
+
+function getOfficialOddsConfig(env = {}) {
+  const key = cleanString(env.ODDS_API_KEY || env.THE_ODDS_API_KEY || env.OFFICIAL_ODDS_API_KEY);
+  const baseUrl = cleanString(env.ODDS_API_BASE_URL || env.THE_ODDS_API_BASE_URL, DEFAULT_ODDS_API_BASE_URL).replace(/\/+$/g, '');
+  const enabledFlag = cleanString(env.ODDS_API_ENABLED || env.OFFICIAL_ODDS_ENABLED, key ? '1' : '0');
+  return {
+    key,
+    baseUrl,
+    enabled: !/^(?:0|false|no|off)$/i.test(enabledFlag) && Boolean(key),
+    regions: cleanString(env.ODDS_API_REGIONS, 'eu,uk'),
+    markets: cleanString(env.ODDS_API_MARKETS, 'h2h,totals,spreads'),
+    maxSportKeys: Math.max(1, Math.min(20, Number.parseInt(cleanString(env.ODDS_API_MAX_SPORT_KEYS, '8'), 10) || 8)),
+    redirectUrl: cleanString(env.ODDS_REDIRECT_URL || env.CRYPTOBET_URL, DEFAULT_ODDS_REDIRECT_URL)
+  };
+}
+
+function officialOddsSportHints(match = {}) {
+  const category = normalizeLookup(match.category || '');
+  const league = normalizeLookup(match.league || '');
+  const haystack = `${category} ${league}`;
+
+  if (/fifa|pes|efootball|esports?|e-spor|dota|lol|cs:?go|nba2k/.test(haystack)) return ['Esports'];
+  if (/basket/.test(haystack)) return ['Basketball'];
+  if (/volley/.test(haystack)) return ['Volleyball'];
+  if (/badminton/.test(haystack)) return ['Badminton'];
+  if (/baseball|beyzbol/.test(haystack)) return ['Baseball'];
+  if (/ice hockey|hockey|buz hokeyi/.test(haystack)) return ['Ice Hockey'];
+  if (/tennis|tenis/.test(haystack)) return ['Tennis'];
+  if (/cricket|kriket/.test(haystack)) return ['Cricket'];
+  if (/rugby/.test(haystack)) return ['Rugby'];
+  if (/mma|boxing|boks/.test(haystack)) return ['MMA', 'Boxing'];
+  if (/football|soccer|futbol|futsal|beach football|mermer futbolu/.test(haystack)) return ['Soccer'];
+  return ['Soccer', 'Basketball', 'Tennis'];
+}
+
+function officialOddsUrl(config, path, params = {}) {
+  const url = new URL(`${config.baseUrl}${path.startsWith('/') ? path : `/${path}`}`);
+  url.searchParams.set('apiKey', config.key);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && String(value).trim() !== '') url.searchParams.set(key, String(value));
+  }
+  return url;
+}
+
+async function fetchOptionalOfficialOddsJson(config, path, params = {}, options = {}) {
+  try {
+    return await fetchJson(officialOddsUrl(config, path, params), {
+      cacheTtl: options.cacheTtl ?? 90,
+      timeoutMs: options.timeoutMs ?? 4500,
+      userAgent: 'ErosMacTV-official-odds/1.0'
+    });
+  } catch (error) {
+    return null;
+  }
+}
+
+function normalizeOfficialOddsPrice(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 1 || number > 1000) return '';
+  return number.toFixed(2);
+}
+
+function normalizeOfficialOddsOutcome(outcome = {}, match = {}) {
+  const name = cleanDisplayText(outcome.name || outcome.description || outcome.label, 'Selection');
+  const point = outcome.point ?? outcome.handicap ?? outcome.total;
+  const price = normalizeOfficialOddsPrice(outcome.price ?? outcome.odds ?? outcome.decimal);
+  if (!name || !price) return null;
+
+  let displayName = name;
+  if (point !== undefined && point !== null && String(point).trim() !== '') {
+    const pointNumber = Number(point);
+    const pointText = Number.isFinite(pointNumber) ? (pointNumber > 0 ? `+${pointNumber}` : String(pointNumber)) : cleanDisplayText(point);
+    if (!displayName.includes(pointText)) displayName = `${displayName} ${pointText}`;
+  }
+
+  const side = tokenScore(name, match.home) > 0.62 ? 'home' : tokenScore(name, match.away) > 0.62 ? 'away' : '';
+
+  return compactObject({
+    name: displayName,
+    odds: price,
+    side,
+    sourceName: cleanDisplayText(outcome.name),
+    point: point ?? undefined
+  });
+}
+
+function normalizeOfficialMarketKey(key = '') {
+  const clean = cleanDisplayText(key, 'Market').toLowerCase();
+  if (clean === 'h2h') return 'Match Winner';
+  if (clean === 'totals') return 'Over / Under';
+  if (clean === 'spreads') return 'Handicap';
+  return cleanDisplayText(key, 'Market').replace(/[_-]+/g, ' ');
+}
+
+function normalizeOfficialOddsMarkets(event = {}, match = {}, redirectUrl = DEFAULT_ODDS_REDIRECT_URL) {
+  const bookmakers = Array.isArray(event.bookmakers) ? event.bookmakers : [];
+  const markets = [];
+  const seen = new Set();
+
+  for (const bookmaker of bookmakers.slice(0, 8)) {
+    const bookmakerTitle = cleanDisplayText(bookmaker.title || bookmaker.key, 'Bookmaker');
+    for (const market of Array.isArray(bookmaker.markets) ? bookmaker.markets : []) {
+      const marketKey = cleanDisplayText(market.key || market.name, 'market');
+      const outcomes = (Array.isArray(market.outcomes) ? market.outcomes : [])
+        .map((outcome) => normalizeOfficialOddsOutcome(outcome, match))
+        .filter(Boolean)
+        .slice(0, 6);
+      if (!outcomes.length) continue;
+
+      const normalizedName = normalizeOfficialMarketKey(marketKey);
+      const key = `${normalizedName}-${outcomes.map((outcome) => `${outcome.name}:${outcome.odds}`).join('|')}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      markets.push({
+        name: normalizedName,
+        bookmaker: bookmakerTitle,
+        outcomes,
+        redirect_url: redirectUrl
+      });
+
+      if (markets.length >= 6) return markets;
+    }
+  }
+
+  return markets;
+}
+
+function officialOddsEventScore(match, event = {}) {
+  const home = cleanDisplayText(event.home_team || event.home || '');
+  const away = cleanDisplayText(event.away_team || event.away || '');
+  if (!home || !away) return 0;
+  const direct = tokenScore(match.home, home) + tokenScore(match.away, away);
+  const reverse = tokenScore(match.home, away) + tokenScore(match.away, home) - 0.18;
+  return Math.max(direct, reverse);
+}
+
+async function loadOfficialOdds(env, match = {}) {
+  const config = getOfficialOddsConfig(env);
+  if (!config.enabled || match?.is_channel || isVirtualStreamMatch(match)) return null;
+
+  const sportsPayload = await fetchOptionalOfficialOddsJson(config, '/sports', {}, { cacheTtl: 3600, timeoutMs: 4500 });
+  const sports = Array.isArray(sportsPayload) ? sportsPayload : [];
+  const hints = officialOddsSportHints(match).map((item) => normalizeLookup(item));
+  const candidates = sports
+    .filter((sport) => sport?.active !== false)
+    .map((sport) => ({
+      key: cleanString(sport.key),
+      group: cleanDisplayText(sport.group || sport.title),
+      title: cleanDisplayText(sport.title || sport.description || sport.key)
+    }))
+    .filter((sport) => sport.key && hints.some((hint) => normalizeLookup(`${sport.group} ${sport.title} ${sport.key}`).includes(hint)))
+    .slice(0, config.maxSportKeys);
+
+  const checkedSports = [];
+  let best = null;
+
+  for (const sport of candidates) {
+    checkedSports.push(sport.key);
+    const events = await fetchOptionalOfficialOddsJson(config, `/sports/${encodeURIComponent(sport.key)}/odds`, {
+      regions: config.regions,
+      markets: config.markets,
+      oddsFormat: 'decimal',
+      dateFormat: 'iso'
+    }, { cacheTtl: 60, timeoutMs: 5000 });
+
+    for (const event of Array.isArray(events) ? events : []) {
+      const score = officialOddsEventScore(match, event);
+      if (!best || score > best.score) best = { event, score, sport };
+    }
+
+    if (best?.score >= 1.22) break;
+  }
+
+  if (!best || best.score < 1.08) {
+    return {
+      source: 'the-odds-api.com',
+      matched: false,
+      markets: [],
+      checked_sports: checkedSports,
+      redirect_url: config.redirectUrl
+    };
+  }
+
+  const markets = normalizeOfficialOddsMarkets(best.event, match, config.redirectUrl);
+  return {
+    source: 'the-odds-api.com',
+    matched: markets.length > 0,
+    confidence: Number(best.score.toFixed(2)),
+    sport_key: best.sport.key,
+    event_id: cleanString(best.event.id),
+    home: cleanDisplayText(best.event.home_team),
+    away: cleanDisplayText(best.event.away_team),
+    commence_time: cleanString(best.event.commence_time),
+    checked_sports: checkedSports,
+    redirect_url: config.redirectUrl,
+    markets
+  };
+}
+
 function isSportmonksEligible(match = {}) {
   if (!match || isVirtualStreamMatch(match)) return false;
   const sport = normalizeSport(match.category || '');
@@ -2328,9 +2531,10 @@ export async function handleMatchDetails(request, env) {
   };
 
   try {
+    const officialOdds = await loadOfficialOdds(env, match);
     const sportmonksDetails = await loadSportmonksDetails(env, match);
     if (sportmonksDetails) {
-      return jsonResponse(sportmonksDetails, 200, {
+      return jsonResponse({ ...sportmonksDetails, official_odds: officialOdds }, 200, {
         'Cache-Control': 'public, max-age=25, s-maxage=60'
       });
     }
@@ -2346,6 +2550,7 @@ export async function handleMatchDetails(request, env) {
           event: null,
           stats: [],
           odds: [],
+          official_odds: officialOdds,
           timeline: [],
           lineups: null,
           related: []
@@ -2388,7 +2593,8 @@ export async function handleMatchDetails(request, env) {
         source: 'sports-api.net',
         event: enrichedEvent,
         stats: normalizeStats(liveStats, fullStats, detailRoot, matched.event),
-        odds: normalizeOdds(offers, detailRoot, matched.event),
+        odds: [],
+        official_odds: officialOdds,
         timeline: normalizeTimeline(liveStats, fullStats, detailRoot, matched.event),
         lineups: normalizeLineups(lineupsPayload, fullStats, detailRoot, matched.event),
         related: related.length ? related : buildFallbackRelated(candidates.events, matched.event),
@@ -2410,6 +2616,7 @@ export async function handleMatchDetails(request, env) {
         event: null,
         stats: [],
         odds: [],
+        official_odds: null,
         timeline: [],
         lineups: null,
         related: [],
