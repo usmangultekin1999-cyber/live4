@@ -17,33 +17,39 @@ const SLA_TYPE_CONFIGS = [
   { type: 92, category: 'Table Tennis' },
   { type: 14, category: 'Snooker' },
   { type: 12, category: 'American Football' },
-  { type: 151, gameId: 1, category: 'eSports' },
-  { type: 151, gameId: 2, category: 'eSports' },
-  { type: 151, gameId: 3, category: 'eSports' },
-  { type: 151, gameId: 4, category: 'eSports' }
+  { type: 151, gameId: 1, category: 'Esports' },
+  { type: 151, gameId: 2, category: 'Esports' },
+  { type: 151, gameId: 3, category: 'Esports' },
+  { type: 151, gameId: 4, category: 'Esports' }
 ];
 
 const SLA_TYPE_CATEGORIES = new Map(SLA_TYPE_CONFIGS.map((item) => [String(item.type), item.category]));
 
 const CATEGORY_TRANSLATIONS = new Map([
-  ['tumu', 'All'], ['tum', 'All'], ['all', 'All'],
-  ['diger', 'Other'], ['other', 'Other'],
+  ['tumu', 'All'], ['tum', 'All'], ['all', 'All'], ['diger', 'Other'], ['other', 'Other'],
   ['channels', 'Channels'], ['kanallar', 'Channels'], ['canli tv', 'Channels'], ['live tv', 'Channels'], ['tv channels', 'Channels'],
   ['futbol', 'Football'], ['football', 'Football'], ['soccer', 'Football'], ['beach football', 'Beach Football'], ['plaj futbolu', 'Beach Football'], ['mermer futbolu', 'Football'],
   ['basketbol', 'Basketball'], ['basketball', 'Basketball'], ['table basketball', 'Basketball'], ['table basketball league', 'Basketball'],
-  ['tenis', 'Tennis'], ['tennis', 'Tennis'],
-  ['voleybol', 'Volleyball'], ['volleyball', 'Volleyball'], ['beach volleyball', 'Beach Volleyball'], ['plaj voleybolu', 'Beach Volleyball'],
+  ['tenis', 'Tennis'], ['tennis', 'Tennis'], ['voleybol', 'Volleyball'], ['volleyball', 'Volleyball'], ['beach volleyball', 'Beach Volleyball'], ['plaj voleybolu', 'Beach Volleyball'],
   ['badminton', 'Badminton'], ['bowling', 'Bowling'], ['cricket', 'Cricket'], ['kriket', 'Cricket'],
   ['fifa', 'FIFA'], ['futsal', 'Futsal'], ['hentbol', 'Handball'], ['handball', 'Handball'],
   ['ice hockey', 'Ice Hockey'], ['buz hokeyi', 'Ice Hockey'], ['baseball', 'Baseball'], ['beyzbol', 'Baseball'],
-  ['table tennis', 'Table Tennis'], ['masa tenisi', 'Table Tennis'], ['esports', 'Esports'], ['espor', 'Esports'], ['e-spor', 'Esports'],
-  ['dota', 'Dota'], ['formula 1', 'Formula 1'], ['motorsport', 'Motorsport'], ['motor sports', 'Motorsport'], ['rugby', 'Rugby'],
-  ['boxing', 'Boxing'], ['boks', 'Boxing'], ['mma', 'MMA'], ['snooker', 'Snooker'], ['darts', 'Darts'], ['golf', 'Golf'], ['cycling', 'Cycling']
+  ['table tennis', 'Table Tennis'], ['masa tenisi', 'Table Tennis'], ['esports', 'Esports'], ['e-spor', 'Esports'], ['espor', 'Esports'],
+  ['formula 1', 'Formula 1'], ['motorsport', 'Motorsport'], ['rugby', 'Rugby'], ['boxing', 'Boxing'], ['boks', 'Boxing'], ['mma', 'MMA'], ['snooker', 'Snooker'], ['darts', 'Darts'], ['golf', 'Golf'], ['cycling', 'Cycling'], ['bisiklet', 'Cycling']
 ]);
 
+const SPORT_ALIASES = new Map([
+  ['football', 'football'], ['soccer', 'football'], ['futbol', 'football'], ['beach football', 'football'], ['plaj futbolu', 'football'], ['mermer futbolu', 'football'],
+  ['basketball', 'basketball'], ['basketbol', 'basketball'], ['table basketball', 'basketball'], ['table basketball league', 'basketball'],
+  ['tennis', 'tennis'], ['tenis', 'tennis'], ['badminton', 'badminton'], ['volleyball', 'volleyball'], ['beach volleyball', 'volleyball'],
+  ['handball', 'handball'], ['hentbol', 'handball'], ['ice hockey', 'ice hockey'], ['hockey', 'ice hockey'], ['baseball', 'baseball'],
+  ['table tennis', 'table tennis'], ['boxing', 'boxing'], ['mma', 'mma'], ['cricket', 'cricket'], ['futsal', 'futsal'], ['rugby', 'rugby'], ['esports', 'esports'], ['fifa', 'esports']
+]);
+
+const VIRTUAL_SPORT_HINTS = /\b(?:fifa|pes|efootball|fc\s*\d{2}|nba\s*2k|nba2k|espor|e-spor|esports|mortal\s+kombat|guilty\s+gear|king\s+of\s+fighters|street\s+fighter|ufc\s*\d|nhl\s*\d{2}|vca\s*\d{2}|imagic|subway\s+surfer|power\s+of\s+power)\b/i;
 const ENTITY_MAP = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
-export function jsonResponse(payload, status = 200, headers = {}) {
+function jsonResponse(payload, status = 200, headers = {}) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
@@ -53,29 +59,29 @@ export function jsonResponse(payload, status = 200, headers = {}) {
   });
 }
 
-function cleanString(value, fallback = '') {
-  if (value === null || value === undefined) return fallback;
-  return String(value).trim() || fallback;
-}
+export { jsonResponse };
 
 function decodeHtmlEntities(value = '') {
   return String(value).replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (entity, code) => {
     const normalized = code.toLowerCase();
     if (normalized[0] === '#') {
-      const number = normalized[1] === 'x'
-        ? Number.parseInt(normalized.slice(2), 16)
-        : Number.parseInt(normalized.slice(1), 10);
+      const number = normalized[1] === 'x' ? Number.parseInt(normalized.slice(2), 16) : Number.parseInt(normalized.slice(1), 10);
       return Number.isFinite(number) ? String.fromCodePoint(number) : entity;
     }
     return ENTITY_MAP[normalized] ?? entity;
   });
 }
 
+function cleanString(value, fallback = '') {
+  if (value === null || value === undefined) return fallback;
+  return String(value).trim() || fallback;
+}
+
 function cleanDisplayText(value, fallback = '') {
   if (value === null || value === undefined) return fallback;
   let text = decodeHtmlEntities(String(value));
   text = text
-    .replace(/<!--([\s\S]*?)-->/g, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
     .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ')
@@ -98,7 +104,7 @@ function normalizeLookup(value = '') {
     .replace(/ı/g, 'i')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -137,22 +143,24 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-function pick(obj, keys, fallback = '') {
-  if (!obj || typeof obj !== 'object') return fallback;
-  for (const key of keys) {
-    if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') return obj[key];
-  }
-  return fallback;
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function compactObject(value = {}) {
+function compactObject(value) {
   const output = {};
   for (const [key, item] of Object.entries(value)) {
-    if (item === undefined || item === null) continue;
-    if (typeof item === 'string' && item.trim() === '') continue;
-    output[key] = item;
+    if (item !== undefined && item !== null && item !== '') output[key] = item;
   }
   return output;
+}
+
+function pick(obj, keys, fallback = '') {
+  for (const key of keys) {
+    const value = obj?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+  }
+  return fallback;
 }
 
 function fallbackIdFromText(value = '') {
@@ -165,25 +173,23 @@ function fallbackIdFromText(value = '') {
 }
 
 function normalizeSport(value = '') {
-  const key = normalizeLookup(value);
-  if (/football|soccer|futbol|futsal/.test(key)) return 'football';
-  if (/basket/.test(key)) return 'basketball';
-  if (/volley/.test(key)) return 'volleyball';
-  if (/badminton/.test(key)) return 'badminton';
-  if (/baseball|beyzbol/.test(key)) return 'baseball';
-  if (/tennis|tenis/.test(key)) return 'tennis';
-  if (/cricket|kriket/.test(key)) return 'cricket';
-  if (/hockey|hokeyi/.test(key)) return 'ice hockey';
-  if (/table tennis|masa tenisi/.test(key)) return 'table tennis';
-  if (/esport|espor|fifa|dota|pes|nba2k/.test(key)) return 'esports';
-  return key;
+  const lookup = normalizeLookup(value);
+  return SPORT_ALIASES.get(lookup) || lookup;
 }
 
 function normalizeTeamName(value = '') {
   return normalizeLookup(value)
-    .replace(/\b(?:fc|cf|sc|afc|u\d{2}|women|woman|bay[ao]nlar|club|team)\b/g, ' ')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\b(?:bayanlar|women|woman|womens|ladies|female|erkekler|men|mens|u\d{1,2}|reserves|reserve|youth|tbl|tpe)\b/g, ' ')
+    .replace(/\b(?:fc|cf|sc|fk|bk|bc|club|de|da|do|ac|afc|if|sk|sv|cd|sd|rc|as)\b/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function tokens(value = '') {
+  return normalizeTeamName(value).split(/\s+/).filter((token) => token.length > 1);
 }
 
 function tokenScore(a = '', b = '') {
@@ -191,23 +197,32 @@ function tokenScore(a = '', b = '') {
   const right = normalizeTeamName(b);
   if (!left || !right) return 0;
   if (left === right) return 1;
-  if (left.includes(right) || right.includes(left)) return Math.min(left.length, right.length) / Math.max(left.length, right.length);
-  const leftTokens = new Set(left.split(/\s+/).filter((token) => token.length > 1));
-  const rightTokens = new Set(right.split(/\s+/).filter((token) => token.length > 1));
-  if (!leftTokens.size || !rightTokens.size) return 0;
-  let overlap = 0;
-  for (const token of leftTokens) if (rightTokens.has(token)) overlap += 1;
-  return overlap / Math.max(leftTokens.size, rightTokens.size);
-}
+  if (left.includes(right) || right.includes(left)) return 0.88;
 
-function isVirtualStreamMatch(match = {}) {
-  const haystack = normalizeLookup(`${match.category || ''} ${match.league || ''} ${match.home || ''} ${match.away || ''}`);
-  return /\b(?:fifa|pes|efootball|fc\s*\d{2}|nba\s*2k|nba2k|espor|e spor|esports|dota|lol|cs go|mortal kombat|imagic)\b/.test(haystack);
+  const aTokens = tokens(left);
+  const bTokens = tokens(right);
+  if (!aTokens.length || !bTokens.length) return 0;
+
+  const aSet = new Set(aTokens);
+  const bSet = new Set(bTokens);
+  let intersection = 0;
+  for (const token of aSet) if (bSet.has(token)) intersection += 1;
+  return intersection / Math.max(aSet.size, bSet.size);
 }
 
 function parseLeagueTime(league = '') {
-  const match = cleanDisplayText(league).match(/\b(\d{1,2}:\d{2})\b/);
-  return match ? { value: match[1] } : null;
+  const text = cleanDisplayText(league);
+  const timeMatch = text.match(/\b(\d{1,2}):(\d{2})\b/);
+  if (!timeMatch) return null;
+  const hours = Number.parseInt(timeMatch[1], 10);
+  const minutes = Number.parseInt(timeMatch[2], 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return { hours, minutes, value: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}` };
+}
+
+function isVirtualStreamMatch(match = {}) {
+  const haystack = `${match?.category || ''} ${match?.league || ''}`;
+  return VIRTUAL_SPORT_HINTS.test(haystack);
 }
 
 function normalizeStreamType(value = '', url = '') {
@@ -222,59 +237,68 @@ function normalizeStreamType(value = '', url = '') {
 }
 
 function normalizeStreamLine(line = {}, index = 0) {
-  const url = cleanString(line?.url || line?.playUrl || line?.play_url || line?.stream_url || line?.streamUrl || line?.m3u8 || line?.flv || line?.rtmp);
+  const url = cleanString(line?.url || line?.playUrl || line?.play_url || line?.stream_url || line?.streamUrl);
+  if (!url) return null;
   const name = cleanDisplayText(line?.nameEn || line?.name_en || line?.label || line?.name || line?.title || `Line ${index + 1}`, `Line ${index + 1}`);
   const type = normalizeStreamType(line?.type || line?.format, url);
-  const streamInfo = line?.streamInfo || line?.stream_info || {};
-  return {
+  const streamInfo = isPlainObject(line?.streamInfo) ? line.streamInfo : (isPlainObject(line?.stream_info) ? line.stream_info : null);
+  return compactObject({
     id: cleanString(line?.id || line?.lineId || line?.line_id || `${index}-${type}-${name}`),
     name,
     type,
     url,
-    isPlayed: line?.isPlayed !== false && line?.is_played !== false && line?.played !== false && line?.playable !== false,
+    isPlayed: line?.isPlayed !== false && line?.is_played !== false,
     height: numberOrNull(streamInfo?.Height ?? streamInfo?.height),
     width: numberOrNull(streamInfo?.Width ?? streamInfo?.width),
-    frameRate: cleanDisplayText(streamInfo?.FrameRate ?? streamInfo?.frameRate ?? streamInfo?.fps ?? '')
-  };
+    frameRate: numberOrNull(streamInfo?.FrameRate ?? streamInfo?.frameRate ?? streamInfo?.fps)
+  });
 }
 
 function normalizeMatch(match) {
-  const videoid = cleanString(match?.videoid || match?.url || match?.stream || match?.streamUrl || match?.stream_url);
+  const videoid = cleanString(match?.videoid);
   const streams = Array.isArray(match?.streams)
-    ? match.streams.map((line, index) => normalizeStreamLine(line, index)).filter((line) => line.url)
+    ? match.streams.map((line, index) => normalizeStreamLine(line, index)).filter(Boolean)
     : [];
+  const mainStream = videoid ? normalizeStreamLine({ name: 'Main Stream', nameEn: 'Main Stream', url: videoid }, 0) : null;
   return compactObject({
-    id: cleanString(match?.id || match?.matchId || match?.match_id || fallbackIdFromText(`${match?.category}|${match?.league}|${match?.home}|${match?.away}`)),
+    id: cleanString(match?.id) || fallbackIdFromText(`${match?.home}|${match?.away}|${match?.league}`),
     source: cleanString(match?.source, 'primary'),
     provider: cleanString(match?.provider, 'ErosMacTV'),
     category: toEnglishCategory(match?.category),
     league: cleanLeague(match?.league),
     home: cleanDisplayText(match?.home, 'Home'),
     away: cleanDisplayText(match?.away, 'Away'),
-    home_icon: cleanString(match?.home_icon || match?.homeLogo || match?.home_logo),
-    away_icon: cleanString(match?.away_icon || match?.awayLogo || match?.away_logo),
-    league_icon: cleanString(match?.league_icon || match?.leagueLogo || match?.league_logo),
-    screenshot: cleanString(match?.screenshot || match?.cover || match?.preview),
+    home_icon: cleanString(match?.home_icon),
+    away_icon: cleanString(match?.away_icon),
+    videoid,
+    streams: streams.length ? streams : (mainStream ? [mainStream] : []),
+    screenshot: cleanString(match?.screenshot),
     progress: cleanDisplayText(match?.progress || match?.progressEn || ''),
     home_score: numberOrNull(match?.home_score ?? match?.homeScore),
-    away_score: numberOrNull(match?.away_score ?? match?.awayScore),
-    videoid,
-    streams: streams.length ? streams : (videoid ? [normalizeStreamLine({ name: 'Main Stream', nameEn: 'Main Stream', url: videoid }, 0)] : [])
+    away_score: numberOrNull(match?.away_score ?? match?.awayScore)
   });
 }
 
 async function fetchJson(url, options = {}) {
   const timeoutMs = Number.isFinite(Number(options.timeoutMs)) ? Number(options.timeoutMs) : 8000;
   const controller = new AbortController();
+  let abortListener = null;
   const timer = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
-  let response;
+  if (options.signal) {
+    if (options.signal.aborted) controller.abort();
+    else {
+      abortListener = () => controller.abort();
+      options.signal.addEventListener('abort', abortListener, { once: true });
+    }
+  }
 
+  let response;
   try {
     response = await fetch(url.toString(), {
       signal: controller.signal,
       headers: {
         Accept: 'application/json',
-        'User-Agent': options.userAgent || 'ErosMacTV-cloudflare-worker/3.3',
+        'User-Agent': options.userAgent || 'ErosMacTV-cloudflare-worker/3.0',
         ...(options.headers || {})
       },
       cf: options.cacheTtl ? { cacheTtl: options.cacheTtl, cacheEverything: true } : undefined
@@ -286,13 +310,13 @@ async function fetchJson(url, options = {}) {
     throw err;
   } finally {
     clearTimeout(timer);
+    if (options.signal && abortListener) options.signal.removeEventListener('abort', abortListener);
   }
 
   const text = await response.text();
   let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch (error) {
+  try { payload = JSON.parse(text); }
+  catch (error) {
     const preview = cleanDisplayText(text.slice(0, 300));
     const err = new Error(preview || 'The API did not return JSON.');
     err.status = response.status;
@@ -305,7 +329,6 @@ async function fetchJson(url, options = {}) {
     err.payload = payload;
     throw err;
   }
-
   return payload;
 }
 
@@ -313,21 +336,22 @@ async function loadLegacyStreamMatches(env) {
   const apiKey = cleanString(env.MATCH_API_KEY);
   const apiUrl = cleanString(env.MATCH_API_URL, DEFAULT_STREAM_API_URL);
   if (!apiKey) {
-    const err = new Error('MATCH_API_KEY is not defined as a Cloudflare environment variable.');
+    const err = new Error('MATCH_API_KEY is not defined as a Cloudflare secret.');
     err.status = 500;
     throw err;
   }
-  const upstreamUrl = new URL(apiUrl);
-  upstreamUrl.searchParams.set('api_key', apiKey);
+  let upstreamUrl;
+  try {
+    upstreamUrl = new URL(apiUrl);
+    upstreamUrl.searchParams.set('api_key', apiKey);
+  } catch (error) {
+    const err = new Error('MATCH_API_URL is not a valid URL.');
+    err.status = 500;
+    throw err;
+  }
   const upstreamJson = await fetchJson(upstreamUrl, { cacheTtl: 60 });
-  const data = Array.isArray(upstreamJson.data) ? upstreamJson.data.map(normalizeMatch).filter((match) => match.videoid) : [];
-  return {
-    success: true,
-    count: data.length,
-    generated_at: cleanDisplayText(upstreamJson.generated_at || ''),
-    expires_in: cleanDisplayText(upstreamJson.expires_in || ''),
-    data
-  };
+  const data = Array.isArray(upstreamJson.data) ? upstreamJson.data.map(normalizeMatch).filter((match) => match.id && match.videoid) : [];
+  return { success: true, count: data.length, generated_at: cleanDisplayText(upstreamJson.generated_at || ''), expires_in: cleanDisplayText(upstreamJson.expires_in || ''), data };
 }
 
 function channelApiUrlFromEnv(env = {}) {
@@ -350,9 +374,15 @@ function channelApiUrlFromEnv(env = {}) {
     err.status = 500;
     throw err;
   }
-  const url = new URL(rawUrl);
-  url.searchParams.set('api_key', apiKey);
-  return url;
+  try {
+    const url = new URL(rawUrl);
+    url.searchParams.set('api_key', apiKey);
+    return url;
+  } catch (error) {
+    const err = new Error('CHANNELS_API_URL is not a valid URL.');
+    err.status = 500;
+    throw err;
+  }
 }
 
 function decodeChannelVideoUrl(value = '') {
@@ -399,7 +429,7 @@ function normalizeChannel(row = {}, index = 0) {
   });
 }
 
-function unwrapRows(payload) {
+function unwrapChannelRows(payload) {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload.data)) return payload.data;
@@ -407,38 +437,33 @@ function unwrapRows(payload) {
   if (Array.isArray(payload.items)) return payload.items;
   if (Array.isArray(payload.list)) return payload.list;
   if (Array.isArray(payload.results)) return payload.results;
-  if (Array.isArray(payload.rows)) return payload.rows;
-  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  if (Array.isArray(payload?.data?.channels)) return payload.data.channels;
   if (Array.isArray(payload?.data?.items)) return payload.data.items;
   if (Array.isArray(payload?.data?.list)) return payload.data.list;
-  if (Array.isArray(payload?.data?.rows)) return payload.data.rows;
   return [];
 }
 
 async function loadChannels(env) {
-  const upstreamJson = await fetchJson(channelApiUrlFromEnv(env), { cacheTtl: 60, timeoutMs: 8000 });
+  const upstreamUrl = channelApiUrlFromEnv(env);
+  const upstreamJson = await fetchJson(upstreamUrl, { cacheTtl: 60, timeoutMs: 8000 });
+  const rows = unwrapChannelRows(upstreamJson);
   const seen = new Set();
   const data = [];
-  unwrapRows(upstreamJson).forEach((row, index) => {
+  rows.forEach((row, index) => {
     const channel = normalizeChannel(row, index);
     if (!channel.id || !channel.videoid || seen.has(channel.id)) return;
     seen.add(channel.id);
     data.push(channel);
   });
-  return {
-    success: true,
-    count: data.length,
-    generated_at: cleanDisplayText(upstreamJson.generated_at || ''),
-    expires_in: cleanDisplayText(upstreamJson.expires_in || '2 hours'),
-    data
-  };
+  return { success: true, count: data.length, generated_at: cleanDisplayText(upstreamJson.generated_at || ''), expires_in: cleanDisplayText(upstreamJson.expires_in || '2 hours'), data };
 }
 
 export async function handleChannels(env) {
   try {
-    return jsonResponse(await loadChannels(env), 200, { 'Cache-Control': 'public, max-age=30, s-maxage=90' });
+    const payload = await loadChannels(env);
+    return jsonResponse(payload, 200, { 'Cache-Control': 'public, max-age=30, s-maxage=90' });
   } catch (error) {
-    return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Could not load the channel list.' }, error?.status || 502, { 'Cache-Control': 'no-store' });
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Could not load the channel list.', detail: error?.detail || undefined }, error?.status || 502, { 'Cache-Control': 'no-store' });
   }
 }
 
@@ -449,17 +474,19 @@ function hasSlaConfig(env = {}) {
     const raw = cleanString(env[key]);
     if (!raw) continue;
     try {
-      if (new URL(raw).searchParams.get('auth')) return true;
+      const parsed = new URL(raw);
+      if (parsed.searchParams.get('auth')) return true;
     } catch (error) {}
   }
   return false;
 }
 
-function extractSlaUrlConfig(rawUrl, fallbackUrl, auth) {
-  const url = new URL(cleanString(rawUrl, fallbackUrl));
-  let extractedAuth = auth || cleanString(url.searchParams.get('auth'));
+function extractSlaUrlConfig(rawValue, fallback, auth = '') {
+  const raw = cleanString(rawValue, fallback);
+  const url = new URL(raw);
+  const urlAuth = cleanString(url.searchParams.get('auth'));
   url.searchParams.delete('auth');
-  return { url, auth: extractedAuth };
+  return { url, auth: cleanString(auth || urlAuth) };
 }
 
 function getSlaConfig(env = {}) {
@@ -469,10 +496,7 @@ function getSlaConfig(env = {}) {
   const stream = extractSlaUrlConfig(rawApiUrl, DEFAULT_SLA_API_URL, auth);
   auth = stream.auth;
   let page = null;
-  if (rawPageUrl || /\/lives\/page\/?$/i.test(stream.url.pathname)) {
-    page = extractSlaUrlConfig(rawPageUrl || stream.url.toString(), DEFAULT_SLA_PAGE_URL, auth);
-    auth = page.auth;
-  }
+  if (rawPageUrl) page = extractSlaUrlConfig(rawPageUrl, DEFAULT_SLA_PAGE_URL, auth);
   if (!auth) {
     const err = new Error('SLA_API_AUTH is not defined as a Cloudflare secret.');
     err.status = 500;
@@ -484,64 +508,66 @@ function getSlaConfig(env = {}) {
 function getSlaTypeConfigs(env = {}) {
   const raw = cleanString(env.SLA_API_TYPES);
   if (!raw) return SLA_TYPE_CONFIGS;
-  const output = [];
-  for (const token of raw.split(/[\s,;|]+/).map((item) => item.trim()).filter(Boolean)) {
-    const match = token.match(/^(\d+)(?::(\d+))?$/);
-    if (!match) continue;
-    const type = Number.parseInt(match[1], 10);
-    const gameId = match[2] ? Number.parseInt(match[2], 10) : undefined;
-    if (!Number.isFinite(type)) continue;
-    output.push({ type, gameId: Number.isFinite(gameId) ? gameId : undefined, category: SLA_TYPE_CATEGORIES.get(String(type)) || `Sport ${type}` });
-  }
+  const output = raw.split(',').map((chunk) => {
+    const [typePart, gamePart] = chunk.split(':').map((item) => cleanString(item));
+    const type = Number.parseInt(typePart, 10);
+    const gameId = Number.parseInt(gamePart, 10);
+    if (!Number.isFinite(type)) return null;
+    return compactObject({ type, gameId: Number.isFinite(gameId) ? gameId : undefined, category: SLA_TYPE_CATEGORIES.get(String(type)) || `Sport ${type}` });
+  }).filter(Boolean);
   return output.length ? output : SLA_TYPE_CONFIGS;
 }
 
-function slaRequestUrl(baseUrl, config, typeConfig = null) {
+function slaRequestUrl(baseUrl, config, typeConfig) {
   const url = new URL(baseUrl.toString());
   url.searchParams.set('auth', config.auth);
   if (typeConfig?.type) url.searchParams.set('type', String(typeConfig.type));
   if (typeConfig?.gameId) url.searchParams.set('gameId', String(typeConfig.gameId));
-  if (config.isPlayed !== '') url.searchParams.set('isPlayed', String(config.isPlayed));
+  if (config.isPlayed) url.searchParams.set('isPlayed', config.isPlayed);
   return url;
 }
 
 async function fetchSlaJson(url, options = {}) {
-  const payload = await fetchJson(url, { cacheTtl: 30, timeoutMs: 9000, userAgent: 'ErosMacTV-SLA-integration/1.0', ...options });
-  const errCode = payload?.errCode;
-  if (errCode !== undefined && errCode !== null && Number(errCode) !== 0) {
+  const payload = await fetchJson(url, { ...options, userAgent: 'ErosMacTV-SLA-integration/2.0' });
+  const errCode = Number(payload?.errCode ?? 0);
+  if (errCode !== 0) {
     const err = new Error(cleanDisplayText(payload?.errMsg || payload?.message || `SLA API returned errCode ${errCode}.`));
-    err.status = Number(errCode) === 99 ? 429 : 502;
+    err.status = errCode === -1 ? 401 : errCode === 99 ? 429 : 502;
     throw err;
   }
   return payload;
 }
 
-function inferStreamType(url = '', explicit = '') {
-  const cleanType = cleanDisplayText(explicit).toLowerCase();
-  if (cleanType) return cleanType;
-  const cleanUrl = cleanString(url).toLowerCase();
-  if (/\.mpd(?:$|[?#])/.test(cleanUrl)) return 'mpd';
-  if (/\.flv(?:$|[?#])/.test(cleanUrl)) return 'flv';
-  if (/\.mp4(?:$|[?#])/.test(cleanUrl)) return 'mp4';
-  if (/\.m3u8(?:$|[?#])/.test(cleanUrl)) return 'm3u8';
-  return 'm3u8';
+function unwrapSlaEvents(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.events)) return payload.events;
+  if (Array.isArray(payload.list)) return payload.list;
+  if (Array.isArray(payload?.data?.list)) return payload.data.list;
+  if (Array.isArray(payload?.data?.events)) return payload.data.events;
+  return [];
 }
 
 function normalizeSlaStream(line = {}, index = 0) {
-  const url = cleanString(pick(line, ['url', 'playUrl', 'play_url', 'streamUrl', 'stream_url', 'm3u8', 'flv', 'rtmp']));
-  if (!/^https?:\/\//i.test(url)) return null;
-  const streamInfo = line?.streamInfo || line?.stream_info || {};
-  const type = inferStreamType(url, pick(line, ['type', 'format']));
-  const rawName = pick(line, ['nameEn', 'name_en', 'lineNameEn', 'line_name_en', 'name', 'lineName', 'label'], '');
+  const url = cleanString(pick(line, ['url', 'playUrl', 'play_url', 'streamUrl', 'stream_url', 'm3u8']));
+  if (!url) return null;
+  const rawName = pick(line, ['nameEn', 'name_en', 'name', 'title', 'label']);
+  const fallbackName = index === 0 ? 'Main Stream' : `Line ${index + 1}`;
+  const type = normalizeStreamType(pick(line, ['type', 'format', 'streamType']), url);
+  const streamInfo = isPlainObject(line?.streamInfo) ? line.streamInfo : (isPlainObject(line?.stream_info) ? line.stream_info : null);
+  const height = Number(streamInfo?.Height ?? streamInfo?.height);
+  const width = Number(streamInfo?.Width ?? streamInfo?.width);
+  const frameRate = cleanDisplayText(streamInfo?.FrameRate ?? streamInfo?.frameRate ?? streamInfo?.fps);
   return compactObject({
     id: cleanString(pick(line, ['id', 'lineId', 'line_id']), `line-${index + 1}`),
-    name: cleanDisplayText(rawName, type ? type.toUpperCase() : `Line ${index + 1}`),
+    name: cleanDisplayText(rawName, fallbackName),
     url,
     type,
     isPlayed: line?.isPlayed === false || line?.played === false || line?.playable === false ? false : true,
-    height: numberOrNull(streamInfo?.Height ?? streamInfo?.height),
-    width: numberOrNull(streamInfo?.Width ?? streamInfo?.width),
-    frameRate: cleanDisplayText(streamInfo?.FrameRate ?? streamInfo?.frameRate ?? streamInfo?.fps ?? '')
+    height: Number.isFinite(height) ? height : undefined,
+    width: Number.isFinite(width) ? width : undefined,
+    frameRate
   });
 }
 
@@ -616,8 +642,8 @@ function normalizeSlaMatch(row = {}, context = {}) {
     away_icon: cleanString(pick(row, ['awayLogo', 'away_logo', 'awayImage', 'away_image'])),
     league_icon: cleanString(pick(row, ['leagueLogo', 'league_logo'])),
     screenshot: cleanString(pick(row, ['screenshot', 'cover', 'preview'])),
-    home_score: numberOrNull(pick(row, ['homeScore', 'home_score'], undefined)),
-    away_score: numberOrNull(pick(row, ['awayScore', 'away_score'], undefined)),
+    home_score: pick(row, ['homeScore', 'home_score'], undefined),
+    away_score: pick(row, ['awayScore', 'away_score'], undefined),
     progress: cleanDisplayText(pick(row, ['progressEn', 'progress_en', 'progress', 'statusText'])),
     is_played: row?.isPlayed === false ? false : true,
     streams: uniqueStreams,
@@ -627,21 +653,24 @@ function normalizeSlaMatch(row = {}, context = {}) {
 
 async function loadSlaPageMatches(config) {
   if (!config.pageUrl) return [];
-  const payload = await fetchSlaJson(slaRequestUrl(config.pageUrl, config, null), { cacheTtl: 30, timeoutMs: 9000 });
-  return unwrapRows(payload).map((row) => normalizeSlaMatch(row)).filter((match) => match.id && match.videoid);
+  const pageUrl = slaRequestUrl(config.pageUrl, config, null);
+  const payload = await fetchSlaJson(pageUrl, { cacheTtl: 30, timeoutMs: 9000 });
+  return unwrapSlaEvents(payload).map((row) => normalizeSlaMatch(row)).filter((match) => match.id && match.videoid);
 }
 
 async function loadSlaTypedMatches(config, env = {}) {
-  const requests = getSlaTypeConfigs(env).map(async (typeConfig) => {
-    const payload = await fetchSlaJson(slaRequestUrl(config.streamUrl, config, typeConfig), { cacheTtl: 30, timeoutMs: 9000 });
-    return unwrapRows(payload).map((row) => normalizeSlaMatch(row, typeConfig));
+  const typeConfigs = getSlaTypeConfigs(env);
+  const requests = typeConfigs.map(async (typeConfig) => {
+    const url = slaRequestUrl(config.streamUrl, config, typeConfig);
+    const payload = await fetchSlaJson(url, { cacheTtl: 30, timeoutMs: 9000 });
+    return unwrapSlaEvents(payload).map((row) => normalizeSlaMatch(row, typeConfig));
   });
   const settled = await Promise.allSettled(requests);
   const matches = [];
   const failures = [];
   for (const result of settled) {
-    if (result.status === 'fulfilled') matches.push(...result.value);
-    else failures.push(result.reason);
+    if (result.status !== 'fulfilled') failures.push(result.reason);
+    else matches.push(...result.value);
   }
   if (!matches.length && failures.length === settled.length && failures[0]) throw failures[0];
   return matches.filter((match) => match.id && match.videoid);
@@ -652,7 +681,8 @@ async function loadSlaMatches(env) {
   const config = getSlaConfig(env);
   let data = [];
   if (config.pageUrl) {
-    try { data = await loadSlaPageMatches(config); } catch (error) { data = []; }
+    try { data = await loadSlaPageMatches(config); }
+    catch (error) { data = []; }
   }
   if (!data.length) {
     const streamUrl = new URL(config.streamUrl.toString());
@@ -693,8 +723,8 @@ function dedupeMergedMatches(matches = []) {
 export async function handleMatches(env) {
   try {
     const sourceMode = normalizeLookup(env.MATCH_SOURCE_MODE || 'merge');
-    const useLegacy = !['sla', 'sla only', 'sla only'].includes(sourceMode);
-    const useSla = !['legacy', 'legacy only', 'match', 'match only'].includes(sourceMode);
+    const useLegacy = !['sla', 'sla only', 'sla-only'].includes(sourceMode);
+    const useSla = !['legacy', 'legacy only', 'legacy-only', 'match', 'match only', 'match-only'].includes(sourceMode);
     const sources = [];
     if (useSla && hasSlaConfig(env)) sources.push(loadSlaMatches(env).catch((error) => ({ success: false, source: 'sla', error })));
     if (useLegacy && cleanString(env.MATCH_API_KEY)) sources.push(loadLegacyStreamMatches(env).catch((error) => ({ success: false, source: 'legacy', error })));
@@ -716,9 +746,7 @@ export async function handleMatches(env) {
       err.status = 502;
       throw err;
     }
-    return jsonResponse({ success: true, count: data.length, generated_at: new Date().toISOString(), expires_in: hasSlaConfig(env) ? '30 seconds' : '2 minutes', source_errors: errors.length ? errors : undefined, data }, 200, {
-      'Cache-Control': hasSlaConfig(env) ? 'public, max-age=20, s-maxage=30' : 'public, max-age=30, s-maxage=90'
-    });
+    return jsonResponse({ success: true, count: data.length, generated_at: new Date().toISOString(), expires_in: hasSlaConfig(env) ? '30 seconds' : '2 minutes', source_errors: errors.length ? errors : undefined, data }, 200, { 'Cache-Control': hasSlaConfig(env) ? 'public, max-age=20, s-maxage=30' : 'public, max-age=30, s-maxage=90' });
   } catch (error) {
     return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Could not connect to the upstream match API.', detail: error?.detail || undefined }, error?.status || 502, { 'Cache-Control': 'no-store' });
   }
@@ -734,14 +762,39 @@ function getOfficialOddsConfig(env = {}) {
     enabled: !/^(?:0|false|no|off)$/i.test(enabledFlag) && Boolean(key),
     regions: cleanString(env.ODDS_API_REGIONS, 'eu,uk'),
     markets: cleanString(env.ODDS_API_MARKETS, 'h2h,totals,spreads'),
-    maxSportKeys: Math.max(1, Math.min(20, Number.parseInt(cleanString(env.ODDS_API_MAX_SPORT_KEYS, '8'), 10) || 8)),
+    maxSportKeys: Math.max(1, Math.min(60, Number.parseInt(cleanString(env.ODDS_API_MAX_SPORT_KEYS, '35'), 10) || 35)),
     redirectUrl: cleanString(env.ODDS_REDIRECT_URL || env.CRYPTOBET_URL, DEFAULT_ODDS_REDIRECT_URL)
   };
 }
 
+
+function stripLeagueTime(value = '') {
+  return cleanDisplayText(value).replace(/^\s*\d{1,2}:\d{2}\s*(?:\||-|•|·)?\s*/g, '').trim();
+}
+
+function officialOddsLeagueScore(match = {}, sport = {}) {
+  const league = normalizeLookup(stripLeagueTime(match.league || ''));
+  const sportText = normalizeLookup(`${sport.group || ''} ${sport.title || ''} ${sport.key || ''}`);
+  if (!league || !sportText) return 0;
+  if (sportText.includes(league) || league.includes(sportText)) return 1;
+  const leagueTokens = league.split(/\s+/).filter((token) => token.length > 2 && !/^\d+$/.test(token) && !/^(?:league|liga|lig|cup|women|men|live|stream)$/.test(token));
+  if (!leagueTokens.length) return 0;
+  let hits = 0;
+  for (const token of leagueTokens) if (sportText.includes(token)) hits += 1;
+  return hits / Math.max(leagueTokens.length, 1);
+}
+
+function officialOddsCandidatePriority(match = {}, sport = {}, hints = []) {
+  const text = normalizeLookup(`${sport.group || ''} ${sport.title || ''} ${sport.key || ''}`);
+  const hintScore = hints.some((hint) => text.includes(hint) || (hint === 'soccer' && /soccer|football/.test(text)) || (hint === 'football' && /soccer|football/.test(text))) ? 2 : 0;
+  const leagueScore = officialOddsLeagueScore(match, sport);
+  const activeScore = sport.active === false ? -2 : 0;
+  return hintScore + leagueScore + activeScore;
+}
+
 function officialOddsSportHints(match = {}) {
   const haystack = normalizeLookup(`${match.category || ''} ${match.league || ''}`);
-  if (/fifa|pes|efootball|esports?|e spor|dota|lol|cs go|nba2k/.test(haystack)) return ['Esports'];
+  if (/fifa|pes|efootball|esports?|e-spor|dota|lol|cs:?go|nba2k/.test(haystack)) return ['Esports'];
   if (/basket/.test(haystack)) return ['Basketball'];
   if (/volley/.test(haystack)) return ['Volleyball'];
   if (/badminton/.test(haystack)) return ['Badminton'];
@@ -751,7 +804,7 @@ function officialOddsSportHints(match = {}) {
   if (/cricket|kriket/.test(haystack)) return ['Cricket'];
   if (/rugby/.test(haystack)) return ['Rugby'];
   if (/mma|boxing|boks/.test(haystack)) return ['MMA', 'Boxing'];
-  if (/football|soccer|futbol|futsal|beach football|mermer futbolu/.test(haystack)) return ['Soccer'];
+  if (/football|soccer|futbol|futsal|beach football|mermer futbolu/.test(haystack)) return ['Soccer', 'Football'];
   return ['Soccer', 'Basketball', 'Tennis'];
 }
 
@@ -833,27 +886,51 @@ function officialOddsEventScore(match, event = {}) {
 
 async function loadOfficialOdds(env, match = {}) {
   const config = getOfficialOddsConfig(env);
-  if (!config.enabled || match?.is_channel || isVirtualStreamMatch(match)) return null;
+  if (match?.is_channel) return null;
+
+  const fallback = {
+    source: 'official-odds',
+    matched: false,
+    markets: [],
+    redirect_url: config.redirectUrl,
+    fallback: true
+  };
+
+  if (!config.enabled || isVirtualStreamMatch(match)) return { ...fallback, disabled: !config.enabled, reason: config.enabled ? 'virtual_or_esports_match' : 'odds_api_disabled' };
+
   const sportsPayload = await fetchOptionalOfficialOddsJson(config, '/sports', {}, { cacheTtl: 3600, timeoutMs: 4500 });
   const sports = Array.isArray(sportsPayload) ? sportsPayload : [];
   const hints = officialOddsSportHints(match).map((item) => normalizeLookup(item));
-  const candidates = sports
+  const enriched = sports
     .filter((sport) => sport?.active !== false)
-    .map((sport) => ({ key: cleanString(sport.key), group: cleanDisplayText(sport.group || sport.title), title: cleanDisplayText(sport.title || sport.description || sport.key) }))
-    .filter((sport) => sport.key && hints.some((hint) => normalizeLookup(`${sport.group} ${sport.title} ${sport.key}`).includes(hint)))
-    .slice(0, config.maxSportKeys);
+    .map((sport) => ({
+      key: cleanString(sport.key),
+      group: cleanDisplayText(sport.group || sport.title),
+      title: cleanDisplayText(sport.title || sport.description || sport.key),
+      active: sport.active,
+      priority: officialOddsCandidatePriority(match, sport, hints)
+    }))
+    .filter((sport) => sport.key)
+    .sort((a, b) => b.priority - a.priority || officialOddsLeagueScore(match, b) - officialOddsLeagueScore(match, a));
+
+  const primaryCandidates = enriched.filter((sport) => sport.priority > 0).slice(0, config.maxSportKeys);
+  const fallbackCandidates = enriched.filter((sport) => !primaryCandidates.some((candidate) => candidate.key === sport.key)).slice(0, Math.max(3, Math.min(10, Math.floor(config.maxSportKeys / 2))));
+  const searchList = [...primaryCandidates, ...fallbackCandidates].slice(0, config.maxSportKeys);
+
   const checkedSports = [];
   let best = null;
-  for (const sport of candidates) {
+  for (const sport of searchList) {
     checkedSports.push(sport.key);
     const events = await fetchOptionalOfficialOddsJson(config, `/sports/${encodeURIComponent(sport.key)}/odds`, { regions: config.regions, markets: config.markets, oddsFormat: 'decimal', dateFormat: 'iso' }, { cacheTtl: 60, timeoutMs: 5000 });
     for (const event of Array.isArray(events) ? events : []) {
-      const score = officialOddsEventScore(match, event);
+      const teamScore = officialOddsEventScore(match, event);
+      if (teamScore <= 0) continue;
+      const score = teamScore + Math.min(0.16, officialOddsLeagueScore(match, sport) * 0.16);
       if (!best || score > best.score) best = { event, score, sport };
     }
-    if (best?.score >= 1.22) break;
+    if (best?.score >= 1.24) break;
   }
-  if (!best || best.score < 1.08) return { source: 'official-odds', matched: false, markets: [], checked_sports: checkedSports, redirect_url: config.redirectUrl };
+  if (!best || best.score < 0.92) return { ...fallback, checked_sports: checkedSports, reason: 'no_matching_official_event' };
   const markets = normalizeOfficialOddsMarkets(best.event, match, config.redirectUrl);
   return {
     source: 'official-odds',
@@ -866,77 +943,45 @@ async function loadOfficialOdds(env, match = {}) {
     commence_time: cleanString(best.event.commence_time),
     checked_sports: checkedSports,
     redirect_url: config.redirectUrl,
-    markets
+    markets,
+    reason: markets.length ? undefined : 'official_event_without_markets'
   };
 }
 
-function standingsConfig(env = {}) {
-  const url = cleanString(env.STANDINGS_API_URL || env.LEAGUE_TABLE_API_URL || env.OFFICIAL_STANDINGS_API_URL);
-  const key = cleanString(env.STANDINGS_API_KEY || env.LEAGUE_TABLE_API_KEY || env.OFFICIAL_STANDINGS_API_KEY);
-  return { url, key, enabled: Boolean(url) };
+function parseMatchStartIso(league = '') {
+  const parsed = parseLeagueTime(league);
+  if (!parsed) return '';
+  const now = new Date();
+  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), parsed.hours, parsed.minutes, 0));
+  return date.toISOString();
 }
 
-function normalizeStandingRow(row = {}, index = 0, match = {}) {
-  const team = cleanDisplayText(pick(row, ['team', 'name', 'team_name', 'teamName', 'club', 'participant', 'participant_name']), '');
-  if (!team) return null;
-  const played = numberOrNull(pick(row, ['played', 'matches', 'games', 'p', 'mp', 'played_total']));
-  const wins = numberOrNull(pick(row, ['wins', 'won', 'w']));
-  const draws = numberOrNull(pick(row, ['draws', 'draw', 'd']));
-  const losses = numberOrNull(pick(row, ['losses', 'lost', 'l']));
-  const gf = numberOrNull(pick(row, ['goals_for', 'gf', 'for']));
-  const ga = numberOrNull(pick(row, ['goals_against', 'ga', 'against']));
-  const gd = numberOrNull(pick(row, ['gd', 'goalDiff', 'goal_difference', 'goaldifference'], gf !== null && ga !== null ? gf - ga : null));
-  const points = numberOrNull(pick(row, ['points', 'pts', 'point']));
-  const side = tokenScore(team, match.home) > 0.72 ? 'home' : tokenScore(team, match.away) > 0.72 ? 'away' : '';
+function buildLocalScoreTable(match = {}) {
+  const home = cleanDisplayText(match.home, 'Home');
+  const away = cleanDisplayText(match.away, 'Away');
+  const homeScore = numberOrNull(match.home_score);
+  const awayScore = numberOrNull(match.away_score);
+  const progress = cleanDisplayText(match.progress || 'Live');
+  const rows = [
+    { position: 1, team: home, logo: '', played: 'Live', gd: homeScore ?? '—', points: progress, side: 'home' },
+    { position: 2, team: away, logo: '', played: 'Live', gd: awayScore ?? '—', points: progress, side: 'away' }
+  ];
+  return { source: 'local-match', title: 'Match Board', rows };
+}
+
+function normalizeEventFromMatch(match = {}) {
   return compactObject({
-    position: numberOrNull(pick(row, ['position', 'rank', 'pos', '#'], index + 1)) ?? index + 1,
-    team,
-    logo: cleanString(pick(row, ['logo', 'image', 'icon', 'team_logo', 'teamLogo'])),
-    played,
-    wins,
-    draws,
-    losses,
-    gd,
-    points,
-    side
+    id: cleanDisplayText(match.id),
+    home: cleanDisplayText(match.home, 'Home'),
+    away: cleanDisplayText(match.away, 'Away'),
+    start: parseMatchStartIso(match.league),
+    group: cleanDisplayText(match.league).replace(/^\d{1,2}:\d{2}\s*\|\s*/, ''),
+    sport: toEnglishCategory(match.category || 'Other'),
+    state: cleanDisplayText(match.progress || 'Live'),
+    country: '',
+    home_logo: '',
+    away_logo: ''
   });
-}
-
-function unwrapStandingsRows(payload) {
-  if (!payload) return [];
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload.rows)) return payload.rows;
-  if (Array.isArray(payload.standings)) return payload.standings;
-  if (Array.isArray(payload.table)) return payload.table;
-  if (Array.isArray(payload.data)) return payload.data;
-  if (Array.isArray(payload?.data?.rows)) return payload.data.rows;
-  if (Array.isArray(payload?.data?.standings)) return payload.data.standings;
-  if (Array.isArray(payload?.data?.table)) return payload.data.table;
-  return [];
-}
-
-async function loadOfficialStandings(env, match = {}) {
-  const config = standingsConfig(env);
-  if (!config.enabled || match?.is_channel) return null;
-  try {
-    const url = new URL(config.url);
-    if (config.key) url.searchParams.set('api_key', config.key);
-    url.searchParams.set('home', cleanDisplayText(match.home));
-    url.searchParams.set('away', cleanDisplayText(match.away));
-    url.searchParams.set('league', cleanDisplayText(match.league));
-    url.searchParams.set('category', cleanDisplayText(match.category));
-    const payload = await fetchJson(url, { cacheTtl: 120, timeoutMs: 5000, userAgent: 'ErosMacTV-standings/1.0' });
-    const rows = unwrapStandingsRows(payload).map((row, index) => normalizeStandingRow(row, index, match)).filter(Boolean).slice(0, 16);
-    if (!rows.length) return null;
-    return {
-      source: cleanDisplayText(payload?.source || payload?.provider || 'official-standings'),
-      league: cleanDisplayText(payload?.league || payload?.competition || match.league),
-      season: cleanDisplayText(payload?.season || payload?.year || ''),
-      rows
-    };
-  } catch (error) {
-    return null;
-  }
 }
 
 export async function handleMatchDetails(request, env) {
@@ -946,24 +991,40 @@ export async function handleMatchDetails(request, env) {
     home: cleanDisplayText(url.searchParams.get('home'), 'Home'),
     away: cleanDisplayText(url.searchParams.get('away'), 'Away'),
     category: cleanDisplayText(url.searchParams.get('category')),
-    league: cleanDisplayText(url.searchParams.get('league'))
+    league: cleanDisplayText(url.searchParams.get('league')),
+    home_score: numberOrNull(url.searchParams.get('home_score')),
+    away_score: numberOrNull(url.searchParams.get('away_score')),
+    progress: cleanDisplayText(url.searchParams.get('progress'))
   };
-
-  const [officialOdds, standings] = await Promise.all([
-    loadOfficialOdds(env, match).catch(() => null),
-    loadOfficialStandings(env, match).catch(() => null)
-  ]);
-
-  return jsonResponse({
-    success: true,
-    matched: false,
-    event: null,
-    stats: [],
-    odds: [],
-    official_odds: officialOdds,
-    timeline: [],
-    lineups: null,
-    related: [],
-    standings
-  }, 200, { 'Cache-Control': 'public, max-age=25, s-maxage=60' });
+  try {
+    const officialOdds = await loadOfficialOdds(env, match);
+    return jsonResponse({
+      success: true,
+      matched: true,
+      source: 'broadcast-local',
+      event: normalizeEventFromMatch(match),
+      stats: [],
+      odds: [],
+      official_odds: officialOdds,
+      timeline: [],
+      lineups: null,
+      related: [],
+      standings: buildLocalScoreTable(match)
+    }, 200, { 'Cache-Control': 'public, max-age=25, s-maxage=60' });
+  } catch (error) {
+    return jsonResponse({
+      success: true,
+      matched: true,
+      source: 'broadcast-local',
+      event: normalizeEventFromMatch(match),
+      stats: [],
+      odds: [],
+      official_odds: null,
+      timeline: [],
+      lineups: null,
+      related: [],
+      standings: buildLocalScoreTable(match),
+      silent: true
+    }, 200, { 'Cache-Control': 'public, max-age=20, s-maxage=60' });
+  }
 }

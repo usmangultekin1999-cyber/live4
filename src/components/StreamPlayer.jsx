@@ -39,54 +39,80 @@ function directStreamUrl(value = '') {
 function formatStandingNumber(value, fallback = '—') {
   if (value === null || value === undefined || value === '') return fallback;
   const number = Number(value);
-  return Number.isFinite(number) ? String(number) : String(value);
+  return Number.isFinite(number) ? String(number) : cleanDisplayText(value, fallback);
 }
 
-function PlayerStandings({ standings = [], language }) {
+function buildFallbackScoreTable(match = {}) {
+  const home = cleanDisplayText(match?.home, 'Home');
+  const away = cleanDisplayText(match?.away, 'Away');
+  const homeScore = match?.home_score ?? '—';
+  const awayScore = match?.away_score ?? '—';
+  const progress = cleanDisplayText(match?.progress, 'Live');
+
+  return {
+    source: 'local-match',
+    rows: [
+      { position: 1, team: home, logo: match?.home_icon || '', played: progress, gd: homeScore, points: progress, side: 'home' },
+      { position: 2, team: away, logo: match?.away_icon || '', played: progress, gd: awayScore, points: progress, side: 'away' }
+    ]
+  };
+}
+
+function PlayerStandings({ standings = [], match, language }) {
   const rows = Array.isArray(standings?.rows) ? standings.rows : Array.isArray(standings) ? standings : [];
   if (!rows.length) return null;
 
-  const leagueLabel = cleanDisplayText(standings?.league, t(language, 'leagueTable'));
-  const seasonLabel = cleanDisplayText(standings?.season, '');
+  const first = rows[0] || {};
+  const second = rows[1] || {};
+  const homeScore = formatStandingNumber(first.gd, '—');
+  const awayScore = formatStandingNumber(second.gd, '—');
+  const progress = cleanDisplayText(first.points || second.points || match?.progress, 'Live');
 
   return (
-    <aside className="player-standings-card" aria-label={t(language, 'standings')}>
+    <aside className="player-standings-card player-score-card" aria-label={t(language, 'standings')}>
       <div className="player-standings-head">
         <div>
-          <span>{leagueLabel}</span>
+          <span>{t(language, 'leagueTable')}</span>
           <h3>{t(language, 'standings')}</h3>
-          {seasonLabel && <small>{seasonLabel}</small>}
         </div>
-        <b>{rows.length}</b>
+        <small>{progress}</small>
       </div>
 
-      <div className="standings-table" role="table" aria-label={t(language, 'standings')}>
+      <div className="scoreboard-hero" aria-label="Score board">
+        <div className="scoreboard-team is-home">
+          <TeamLogo src={first.logo || match?.home_icon} name={first.team} />
+          <strong>{cleanDisplayText(first.team, 'Home')}</strong>
+        </div>
+        <div className="scoreboard-score">
+          <strong>{homeScore}</strong>
+          <span>{t(language, 'vs')}</span>
+          <strong>{awayScore}</strong>
+        </div>
+        <div className="scoreboard-team is-away">
+          <TeamLogo src={second.logo || match?.away_icon} name={second.team} />
+          <strong>{cleanDisplayText(second.team, 'Away')}</strong>
+        </div>
+      </div>
+
+      <div className="standings-table standings-table--compact" role="table" aria-label={t(language, 'standings')}>
         <div className="standings-row standings-row--head" role="row">
           <span>#</span>
           <span>{t(language, 'team')}</span>
-          <span>W-D-L</span>
-          <span>{t(language, 'goalDiffShort')}</span>
-          <span>{t(language, 'pointsShort')}</span>
+          <span>Score</span>
+          <span>Status</span>
         </div>
 
-        {rows.slice(0, 14).map((row) => {
-          const form = [row.wins, row.draws, row.losses]
-            .map((value) => formatStandingNumber(value, '0'))
-            .join('-');
-
-          return (
-            <div className={`standings-row ${row.side ? 'is-highlighted' : ''}`} role="row" key={`${row.position}-${row.team}`}>
-              <span>{formatStandingNumber(row.position)}</span>
-              <span className="standings-team">
-                <TeamLogo src={row.logo} name={row.team} />
-                <strong>{cleanDisplayText(row.team, 'Team')}</strong>
-              </span>
-              <span>{form}</span>
-              <span>{formatStandingNumber(row.gd)}</span>
-              <span><b>{formatStandingNumber(row.points)}</b></span>
-            </div>
-          );
-        })}
+        {rows.slice(0, 8).map((row, index) => (
+          <div className={`standings-row ${row.side ? 'is-highlighted' : ''}`} role="row" key={`${row.position || index}-${row.team}`}>
+            <span>{formatStandingNumber(row.position || index + 1)}</span>
+            <span className="standings-team">
+              <TeamLogo src={row.logo || (row.side === 'home' ? match?.home_icon : match?.away_icon)} name={row.team} />
+              <strong>{cleanDisplayText(row.team, 'Team')}</strong>
+            </span>
+            <span><b>{formatStandingNumber(row.gd)}</b></span>
+            <span>{cleanDisplayText(row.points || row.played || progress, 'Live')}</span>
+          </div>
+        ))}
       </div>
     </aside>
   );
@@ -124,41 +150,84 @@ function safeBetUrl(value = '') {
   }
 }
 
-function OfficialOddsBoard({ details, language }) {
-  const markets = officialOddsMarkets(details);
-  if (!markets.length) return null;
+function matchCanDraw(match = {}) {
+  const haystack = `${match?.category || ''} ${match?.league || ''} ${match?.home || ''} ${match?.away || ''}`.toLowerCase();
+  if (/basket|tennis|badminton|baseball|volley|table tennis|snooker|cricket|mma|boxing/.test(haystack)) return false;
+  return /football|soccer|futbol|futsal|beach football|hockey|ice hockey|fifa|pes|efootball/.test(haystack);
+}
 
-  const totalSelections = markets.reduce((sum, market) => sum + market.outcomes.length, 0);
+function fallbackOddsMarkets(match = {}, details = {}, language = 'en') {
+  const redirectUrl = cleanDisplayText(details?.official_odds?.redirect_url || details?.officialOdds?.redirect_url || 'https://cryptobet545.com');
+  const home = cleanDisplayText(match?.home, t(language, 'homeTeam'));
+  const away = cleanDisplayText(match?.away, t(language, 'awayTeam'));
+  if (!home || !away) return [];
+
+  const winnerOutcomes = [
+    { name: home, odds: t(language, 'openOdds'), side: 'home', isFallback: true },
+    ...(matchCanDraw(match) ? [{ name: t(language, 'draw'), odds: t(language, 'openOdds'), side: 'draw', isFallback: true }] : []),
+    { name: away, odds: t(language, 'openOdds'), side: 'away', isFallback: true }
+  ];
+
+  return [
+    {
+      name: t(language, 'matchWinner'),
+      bookmaker: 'Cryptobet',
+      redirectUrl,
+      fallback: true,
+      outcomes: winnerOutcomes
+    },
+    {
+      name: t(language, 'totalsMarket'),
+      bookmaker: 'Cryptobet',
+      redirectUrl,
+      fallback: true,
+      outcomes: [
+        { name: t(language, 'overLine'), odds: t(language, 'openOdds'), isFallback: true },
+        { name: t(language, 'underLine'), odds: t(language, 'openOdds'), isFallback: true }
+      ]
+    },
+    {
+      name: t(language, 'handicap'),
+      bookmaker: 'Cryptobet',
+      redirectUrl,
+      fallback: true,
+      outcomes: [
+        { name: home, odds: t(language, 'openOdds'), side: 'home', isFallback: true },
+        { name: away, odds: t(language, 'openOdds'), side: 'away', isFallback: true }
+      ]
+    }
+  ];
+}
+
+function OfficialOddsBoard({ details, match, language }) {
+  const markets = officialOddsMarkets(details);
+  const hasOfficialMarkets = markets.length > 0;
+  const displayMarkets = hasOfficialMarkets ? markets : fallbackOddsMarkets(match, details, language);
 
   return (
-    <section className="official-odds-board" aria-label={t(language, 'officialOdds')}>
+    <section
+      className={`official-odds-board ${hasOfficialMarkets ? 'has-official-odds' : 'is-fallback'}`.trim()}
+      aria-label={t(language, 'officialOdds')}
+    >
       <div className="official-odds-head">
         <div>
-          <span>{t(language, 'officialOdds')}</span>
+          <span>{hasOfficialMarkets ? t(language, 'officialOdds') : t(language, 'odds')}</span>
           <h3>{t(language, 'matchOdds')}</h3>
         </div>
-        <a className="odds-main-cta" href={safeBetUrl(markets[0]?.redirectUrl)} target="_blank" rel="noopener noreferrer sponsored">
-          {t(language, 'tapOddsToBet')}
-        </a>
-      </div>
-
-      <div className="official-odds-strip">
-        <span>{markets.length} markets</span>
-        <i />
-        <span>{totalSelections} selections</span>
+        <small>{hasOfficialMarkets ? t(language, 'tapOddsToBet') : t(language, 'oddsFallbackText')}</small>
       </div>
 
       <div className="official-odds-grid">
-        {markets.map((market) => (
-          <article className="official-odds-market" key={`${market.name}-${market.bookmaker}`}>
+        {displayMarkets.map((market) => (
+          <article className={`official-odds-market ${market.fallback ? 'is-fallback-market' : ''}`.trim()} key={`${market.name}-${market.bookmaker}`}>
             <div className="official-market-title">
               <strong>{market.name}</strong>
               {market.bookmaker && <em>{market.bookmaker}</em>}
             </div>
             <div className="official-outcomes">
-              {market.outcomes.slice(0, 6).map((outcome) => (
+              {market.outcomes.slice(0, 4).map((outcome) => (
                 <a
-                  className={`official-odd-chip ${outcome.side ? `is-${outcome.side}` : ''}`}
+                  className={`official-odd-chip ${outcome.side ? `is-${outcome.side}` : ''} ${market.fallback ? 'is-link-only' : ''}`.trim()}
                   key={`${market.name}-${outcome.name}-${outcome.odds}`}
                   href={safeBetUrl(market.redirectUrl)}
                   target="_blank"
@@ -200,7 +269,7 @@ export default function StreamPlayer({ match, onClose, language }) {
   const home = cleanDisplayText(match?.home, 'Home');
   const away = isChannel ? '' : cleanDisplayText(match?.away, 'Away');
   const displayTitle = isChannel || !away ? home : `${home} ${t(language, 'vs')} ${away}`;
-  const standings = details?.standings?.rows?.length ? details.standings : null;
+  const standings = details?.standings?.rows?.length ? details.standings : (!isChannel ? buildFallbackScoreTable(match) : null);
 
 
   useEffect(() => {
@@ -228,8 +297,7 @@ export default function StreamPlayer({ match, onClose, language }) {
         })
         .catch((error) => {
           if (error?.name === 'AbortError') return;
-          // Optional match data is loaded in the background. Never show an error block over
-          // the broadcast and never let a data-provider failure affect playback.
+          // Optional data must never block the broadcast playback.
           setDetails(null);
           setDetailsError('');
           setDetailsStatus('ready');
@@ -453,10 +521,10 @@ export default function StreamPlayer({ match, onClose, language }) {
             )}
           </div>
 
-          <PlayerStandings standings={standings} language={language} />
+          <PlayerStandings standings={standings} match={match} language={language} />
         </div>
 
-        {!isChannel && <OfficialOddsBoard details={details} language={language} />}
+        {!isChannel && <OfficialOddsBoard details={details} match={match} language={language} />}
 
         {!isChannel && (
           <MatchInsights

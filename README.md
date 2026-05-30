@@ -1,23 +1,24 @@
-# ErosMacTV Worker Site
+# ErosMacTV Cloudflare Worker Site
 
-Cloudflare Worker + Vite/React live match and channel interface for ErosMacTV.
+Live sports streaming interface for Cloudflare Workers. The site loads matches from the legacy match API and/or SLA SportLiveAPI, shows channels from the channels endpoint, and plays stream URLs directly from the original provider domain without proxying live media through Cloudflare.
 
-This build keeps the broadcast flow simple:
+## What changed in v34
 
-- Match list: legacy match API + SLA / SportLiveAPI.
-- Channels: ErosMacTV channel API.
-- Player: uses the original stream URL directly in the visitor browser. The Worker does not proxy HLS/DASH/MP4 segments.
-- Optional odds: official odds provider configured with `ODDS_API_*`.
-- Optional standings: only from a custom official `STANDINGS_API_URL` if you add one.
+- Official odds matching was widened. Default `ODDS_API_MAX_SPORT_KEYS` is now 35 so more sport/league keys are checked.
+- The odds section now remains usable on every match popup. If official prices are not available for the exact broadcast match, it shows link-only Cryptobet market buttons instead of an empty odds panel.
+- No fake decimal odds are generated. Numeric odds are shown only when the official odds provider returns a real matching market.
 
-Removed from this build:
-
-- Previous external match-data integrations.
-- Any match details loaded from those removed providers.
+- Odds panel now appears for every non-channel match.
+- If the official odds provider has a matching event, real decimal odds are shown.
+- If no matching official market exists, the panel shows clean Cryptobet action buttons instead of staying empty.
+- No fake odds are generated. Link-only fallback selections display an open action, not fabricated prices.
+- external football data integration remains removed.
+- external data provider integration remains removed.
+- Stream URLs are still not proxied through the Worker.
 
 ## Cloudflare build settings
 
-```txt
+```text
 Build command: npm run build
 Deploy command: npx wrangler deploy
 Path: /
@@ -25,53 +26,49 @@ Path: /
 
 ## Required runtime variables
 
-Add these in Cloudflare Workers & Pages > your project > Settings > Variables and Secrets:
-
-```txt
-MATCH_API_KEY          Secret
-MATCH_API_URL          https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php
-MATCH_SOURCE_MODE      merge
-
-SLA_API_AUTH           Secret
-SLA_API_URL            https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams
-
-CHANNELS_API_URL       https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/channels.php
+```text
+MATCH_API_KEY = your legacy match API key
+MATCH_API_URL = https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php
+MATCH_SOURCE_MODE = merge
 ```
 
-`CHANNELS_API_KEY` is optional. If it is not set, the Worker uses `MATCH_API_KEY` for the channel endpoint.
+## Optional SLA variables
 
-## Optional odds variables
-
-```txt
-ODDS_API_ENABLED       1
-ODDS_API_KEY           Secret
-ODDS_API_BASE_URL      https://api.the-odds-api.com/v4
-ODDS_API_REGIONS       eu,uk
-ODDS_API_MARKETS       h2h,totals,spreads
-ODDS_API_MAX_SPORT_KEYS 8
-ODDS_REDIRECT_URL      https://cryptobet545.com
+```text
+SLA_API_AUTH = your SLA auth key
+SLA_API_URL = https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams
+SLA_API_PAGE_URL = https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/page
 ```
 
-When odds are available, clicking any odds tile opens `ODDS_REDIRECT_URL` in a new tab.
+## Optional channels variables
 
-## Optional standings variables
-
-This build no longer includes a built-in football data provider for standings. Add your own official/legal endpoint if you want the standings card to show real data:
-
-```txt
-STANDINGS_API_URL      https://your-official-standings-endpoint.example/table
-STANDINGS_API_KEY      Secret, optional
+```text
+CHANNELS_API_URL = https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/channels.php
+CHANNELS_API_KEY = optional key if different from MATCH_API_KEY
 ```
 
-The endpoint should return rows in one of these containers: `rows`, `standings`, `table`, or `data`.
-Rows may contain fields such as `position`, `team`, `logo`, `played`, `wins`, `draws`, `losses`, `gd`, and `points`.
+## Optional official odds variables
 
-## Local development
-
-```bash
-npm install
-npm run build
-npm run dev
+```text
+ODDS_API_ENABLED = 1
+ODDS_API_KEY = your official odds provider key
+ODDS_API_BASE_URL = https://api.the-odds-api.com/v4
+ODDS_API_REGIONS = eu,uk
+ODDS_API_MARKETS = h2h,totals,spreads
+ODDS_API_MAX_SPORT_KEYS = 35
+ODDS_REDIRECT_URL = https://cryptobet545.com
 ```
 
-Never commit real API keys or secrets to GitHub.
+`MATCH_API_KEY`, `SLA_API_AUTH`, `CHANNELS_API_KEY` and `ODDS_API_KEY` should be configured as Cloudflare Secrets. Do not upload real keys to GitHub.
+
+## API endpoints
+
+```text
+/api/matches         Live match list from legacy API and/or SLA
+/api/channels        Channel list
+/api/match-details   Local match board + optional official odds
+```
+
+## Notes
+
+The score/table panel no longer depends on external sports-data providers. It is built from the broadcast match itself, so playback is not affected by third-party statistics failures. The odds panel can work with an official odds provider, but it falls back to Cryptobet link buttons when the provider does not cover a specific broadcast match.

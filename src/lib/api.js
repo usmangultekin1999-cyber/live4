@@ -92,10 +92,10 @@ function normalizeDetailsPayload(payload = {}) {
     stats: Array.isArray(payload.stats) ? payload.stats : [],
     odds: Array.isArray(payload.odds) ? payload.odds : [],
     official_odds: payload.official_odds || null,
-    standings: payload.standings || null,
     timeline: Array.isArray(payload.timeline) ? payload.timeline : [],
     lineups: payload.lineups || null,
-    related: Array.isArray(payload.related) ? payload.related : []
+    related: Array.isArray(payload.related) ? payload.related : [],
+    standings: payload.standings || null
   };
 }
 
@@ -105,7 +105,10 @@ export async function fetchMatchDetails(match, { signal } = {}) {
     home: cleanDisplayText(match?.home, 'Home'),
     away: cleanDisplayText(match?.away, 'Away'),
     category: cleanDisplayText(match?.category),
-    league: cleanDisplayText(match?.league)
+    league: cleanDisplayText(match?.league),
+    home_score: match?.home_score ?? '',
+    away_score: match?.away_score ?? '',
+    progress: cleanDisplayText(match?.progress)
   });
 
   const response = await fetch(`/api/match-details?${params.toString()}`, {
