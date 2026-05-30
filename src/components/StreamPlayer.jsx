@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import MatchInsights from './MatchInsights.jsx';
+import TeamLogo from './TeamLogo.jsx';
 import { cleanDisplayText, parseLeague } from '../lib/helpers.js';
 import { fetchMatchDetails } from '../lib/api.js';
 import { t } from '../lib/i18n.js';
@@ -34,6 +35,53 @@ function directStreamUrl(value = '') {
   }
 }
 
+
+function formatStandingNumber(value, fallback = '—') {
+  if (value === null || value === undefined || value === '') return fallback;
+  const number = Number(value);
+  return Number.isFinite(number) ? String(number) : String(value);
+}
+
+function PlayerStandings({ standings = [], language }) {
+  const rows = Array.isArray(standings?.rows) ? standings.rows : Array.isArray(standings) ? standings : [];
+  if (!rows.length) return null;
+
+  return (
+    <aside className="player-standings-card" aria-label={t(language, 'standings')}>
+      <div className="player-standings-head">
+        <div>
+          <span>{t(language, 'leagueTable')}</span>
+          <h3>{t(language, 'standings')}</h3>
+        </div>
+        <small>{rows.length}</small>
+      </div>
+
+      <div className="standings-table" role="table" aria-label={t(language, 'standings')}>
+        <div className="standings-row standings-row--head" role="row">
+          <span>#</span>
+          <span>{t(language, 'team')}</span>
+          <span>{t(language, 'playedShort')}</span>
+          <span>{t(language, 'goalDiffShort')}</span>
+          <span>{t(language, 'pointsShort')}</span>
+        </div>
+
+        {rows.slice(0, 12).map((row) => (
+          <div className={`standings-row ${row.side ? 'is-highlighted' : ''}`} role="row" key={`${row.position}-${row.team}`}>
+            <span>{formatStandingNumber(row.position)}</span>
+            <span className="standings-team">
+              <TeamLogo src={row.logo} name={row.team} />
+              <strong>{cleanDisplayText(row.team, 'Team')}</strong>
+            </span>
+            <span>{formatStandingNumber(row.played)}</span>
+            <span>{formatStandingNumber(row.gd)}</span>
+            <span><b>{formatStandingNumber(row.points)}</b></span>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 export default function StreamPlayer({ match, onClose, language }) {
   const videoRef = useRef(null);
   const iframeRef = useRef(null);
@@ -58,6 +106,7 @@ export default function StreamPlayer({ match, onClose, language }) {
   const home = cleanDisplayText(match?.home, 'Home');
   const away = isChannel ? '' : cleanDisplayText(match?.away, 'Away');
   const displayTitle = isChannel || !away ? home : `${home} ${t(language, 'vs')} ${away}`;
+  const standings = details?.standings?.rows?.length ? details.standings : null;
 
 
   useEffect(() => {
@@ -275,38 +324,42 @@ export default function StreamPlayer({ match, onClose, language }) {
           </div>
         )}
 
-        <div className="video-shell">
-          {mode === 'loading' && (
-            <div className="video-message" aria-label="Loading stream">
-              <span className="loader" />
-            </div>
-          )}
+        <div className={`player-watch-grid ${standings ? 'has-standings' : ''}`}>
+          <div className="video-shell">
+            {mode === 'loading' && (
+              <div className="video-message" aria-label="Loading stream">
+                <span className="loader" />
+              </div>
+            )}
 
-          {mode === 'empty' && (
-            <div className="video-message">
-              <p>{message}</p>
-            </div>
-          )}
+            {mode === 'empty' && (
+              <div className="video-message">
+                <p>{message}</p>
+              </div>
+            )}
 
-          <video
-            ref={videoRef}
-            className={mode === 'video' || mode === 'loading' ? 'is-visible' : ''}
-            controls
-            autoPlay
-            playsInline
-            preload="metadata"
-          />
-
-          {mode === 'fallback' && (
-            <iframe
-              ref={iframeRef}
-              title={`${displayTitle} stream`}
-              src={streamUrl}
-              allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-              allowFullScreen
-              referrerPolicy="no-referrer"
+            <video
+              ref={videoRef}
+              className={mode === 'video' || mode === 'loading' ? 'is-visible' : ''}
+              controls
+              autoPlay
+              playsInline
+              preload="metadata"
             />
-          )}
+
+            {mode === 'fallback' && (
+              <iframe
+                ref={iframeRef}
+                title={`${displayTitle} stream`}
+                src={streamUrl}
+                allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                allowFullScreen
+                referrerPolicy="no-referrer"
+              />
+            )}
+          </div>
+
+          <PlayerStandings standings={standings} language={language} />
         </div>
 
         {!isChannel && (

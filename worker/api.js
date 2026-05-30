@@ -1256,6 +1256,118 @@ function normalizeSportmonksTimeline(fixture = {}) {
     .slice(0, 12);
 }
 
+
+function sportmonksStandingParticipant(row = {}) {
+  const participant = row.participant || row.team || row.club || {};
+  return {
+    id: cleanString(row.participant_id || row.participantId || row.team_id || participant.id),
+    name: cleanDisplayText(participant.name || row.participant_name || row.team_name || row.name, 'Team'),
+    logo: cleanString(participant.image_path || participant.logo_path || participant.image || participant.logo)
+  };
+}
+
+function standingDetailEntries(row = {}) {
+  const details = [];
+  const add = (label, value) => {
+    const key = normalizeLookup(label);
+    if (!key || value === null || value === undefined || value === '') return;
+    details.push([key, value]);
+  };
+
+  const collections = [row.details, row.statistics, row.stats];
+  for (const collection of collections) {
+    for (const detail of sportmonksCollection(collection)) {
+      const label = cleanDisplayText(
+        detail?.type?.name || detail?.type?.display_name || detail?.type?.code || detail?.name || detail?.code || detail?.type_name || detail?.type,
+        ''
+      );
+      const value = detail?.value ?? detail?.data?.value ?? detail?.data?.total ?? detail?.total ?? detail?.count ?? detail?.data;
+      add(label, value);
+    }
+  }
+
+  for (const [key, value] of Object.entries(row)) {
+    if (['position', 'points', 'participant_id', 'participantId', 'participant', 'team', 'league', 'season', 'stage', 'group', 'round', 'form'].includes(key)) continue;
+    if (typeof value !== 'object') add(key, value);
+  }
+
+  return details;
+}
+
+function pickStandingValue(row = {}, patterns = []) {
+  const entries = standingDetailEntries(row);
+  for (const pattern of patterns) {
+    const found = entries.find(([key]) => pattern.test(key));
+    if (found) return numberOrNull(found[1]);
+  }
+  return null;
+}
+
+function normalizeSportmonksStandingsRows(rows = [], fixture = {}) {
+  const { home, away } = sportmonksHomeAway(fixture);
+  const normalized = rows
+    .map((row) => {
+      const participant = sportmonksStandingParticipant(row);
+      const played = pickStandingValue(row, [/\bplayed\b/, /matches played/, /overall.*match/]) ?? numberOrNull(row.played || row.matches_played || row.overall?.played);
+      const won = pickStandingValue(row, [/\bwon\b/, /\bwins?\b/]) ?? numberOrNull(row.won || row.win || row.wins || row.overall?.won);
+      const drawn = pickStandingValue(row, [/\bdraws?\b/, /\btie\b/]) ?? numberOrNull(row.drawn || row.draw || row.draws || row.overall?.draw);
+      const lost = pickStandingValue(row, [/\blost\b/, /\bloss?es\b/]) ?? numberOrNull(row.lost || row.loss || row.losses || row.overall?.lost);
+      const gf = pickStandingValue(row, [/goals? for/, /goals? scored/, /\bfor\b/]) ?? numberOrNull(row.goals_for || row.gf || row.overall?.goals_for);
+      const ga = pickStandingValue(row, [/goals? against/, /goals? conceded/, /\bagainst\b/]) ?? numberOrNull(row.goals_against || row.ga || row.overall?.goals_against);
+      const gd = pickStandingValue(row, [/goal difference/, /\bgd\b/, /difference/]) ?? numberOrNull(row.goal_difference || row.gd || (gf !== null && ga !== null ? gf - ga : null));
+      const points = numberOrNull(row.points || row.point || pickStandingValue(row, [/\bpoints?\b/]));
+      const position = numberOrNull(row.position || row.rank || row.ranking) ?? 0;
+      const side = String(participant.id) === String(home.id) ? 'home' : String(participant.id) === String(away.id) ? 'away' : '';
+
+      if (!participant.name || !position) return null;
+      return compactObject({
+        position,
+        team: participant.name,
+        logo: participant.logo,
+        played,
+        won,
+        drawn,
+        lost,
+        gf,
+        ga,
+        gd,
+        points,
+        side
+      });
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.position || 999) - (b.position || 999));
+
+  return normalized.slice(0, 18);
+}
+
+async function loadSportmonksStandings(env, fixture = {}) {
+  const leagueId = cleanString(fixture.league_id || fixture.league?.id);
+  const seasonId = cleanString(fixture.season_id || fixture.season?.id);
+  const include = cleanString(env.SPORTMONKS_STANDINGS_INCLUDES, 'participant;details;league;season');
+
+  const attempts = [];
+  if (leagueId) attempts.push({ path: `/standings/live/leagues/${encodeURIComponent(leagueId)}`, params: { include }, source: 'live-league' });
+  if (seasonId) attempts.push({ path: `/standings/seasons/${encodeURIComponent(seasonId)}`, params: { include }, source: 'season' });
+
+  for (const attempt of attempts) {
+    const payload = await fetchOptionalSportmonksJson(env, attempt.path, attempt.params, { cacheTtl: 600, timeoutMs: 5200 });
+    const rows = unwrapSportmonksRows(payload);
+    const standings = normalizeSportmonksStandingsRows(rows, fixture);
+    if (standings.length) {
+      return {
+        source: 'sportmonks.com',
+        mode: attempt.source,
+        leagueId,
+        seasonId,
+        rows: standings
+      };
+    }
+  }
+
+  return null;
+}
+
 function normalizeSportmonksLineups(fixture = {}) {
   const participantMap = sportmonksParticipantNameMap(fixture);
   const output = { homeFormation: '', awayFormation: '', homePlayers: [], awayPlayers: [] };
@@ -1294,6 +1406,8 @@ async function loadSportmonksDetails(env, match) {
     else if (isPlainObject(detail?.data)) fixture = { ...fixture, ...detail.data };
   }
 
+  const standings = await loadSportmonksStandings(env, fixture);
+
   return {
     success: true,
     matched: true,
@@ -1304,6 +1418,7 @@ async function loadSportmonksDetails(env, match) {
     odds: [],
     timeline: normalizeSportmonksTimeline(fixture),
     lineups: normalizeSportmonksLineups(fixture),
+    standings,
     related: unwrapSportmonksRows({ data: candidates.fixtures })
       .filter((item) => String(item.id) !== String(fixtureId))
       .map((item) => normalizeSportmonksEvent(item))

@@ -2080,3 +2080,160 @@ body::after {
   .content-mode-tabs button { min-height: 36px; font-size: .82rem; }
   .channel-grid { grid-template-columns: 1fr; }
 }
+
+/* v31: player-side standings table */
+.player-panel {
+  width: min(1520px, calc(100vw - 2rem)) !important;
+}
+
+.player-watch-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0 !important;
+  align-items: stretch !important;
+  background: #020804 !important;
+}
+
+.player-watch-grid.has-standings {
+  grid-template-columns: minmax(0, 1fr) 340px !important;
+}
+
+.player-standings-card {
+  min-height: 100% !important;
+  max-height: min(62vh, 620px) !important;
+  overflow: auto !important;
+  border-left: 1px solid rgba(73, 255, 125, 0.16) !important;
+  background:
+    radial-gradient(18rem 14rem at 20% 0%, rgba(46, 255, 113, 0.10), transparent 68%),
+    linear-gradient(180deg, #06180d, #031008) !important;
+  color: #fff !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(58, 231, 102, 0.55) transparent !important;
+}
+
+.player-standings-card::-webkit-scrollbar { width: 0.4rem !important; }
+.player-standings-card::-webkit-scrollbar-thumb { border-radius: 999px !important; background: rgba(58, 231, 102, 0.55) !important; }
+
+.player-standings-head {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 2 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.8rem !important;
+  padding: 0.95rem 1rem 0.75rem !important;
+  border-bottom: 1px solid rgba(73, 255, 125, 0.12) !important;
+  background: linear-gradient(180deg, rgba(6, 24, 13, 0.98), rgba(6, 24, 13, 0.92)) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+.player-standings-head span {
+  display: block !important;
+  color: #61f78d !important;
+  font-size: 0.68rem !important;
+  font-weight: 1000 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+.player-standings-head h3 {
+  margin: 0.16rem 0 0 !important;
+  color: #fff !important;
+  font-size: 1.05rem !important;
+  font-weight: 1000 !important;
+  letter-spacing: -0.03em !important;
+}
+
+.player-standings-head small {
+  display: inline-grid !important;
+  place-items: center !important;
+  min-width: 1.65rem !important;
+  height: 1.65rem !important;
+  padding: 0 0.35rem !important;
+  border-radius: 999px !important;
+  color: #04240f !important;
+  background: linear-gradient(135deg, #66ff94, #0fd450) !important;
+  font-size: 0.72rem !important;
+  font-weight: 1000 !important;
+}
+
+.standings-table {
+  display: grid !important;
+  gap: 0.26rem !important;
+  padding: 0.72rem !important;
+}
+
+.standings-row {
+  display: grid !important;
+  grid-template-columns: 1.7rem minmax(0, 1fr) 2rem 2.3rem 2.3rem !important;
+  align-items: center !important;
+  gap: 0.38rem !important;
+  min-height: 2.55rem !important;
+  padding: 0.34rem 0.42rem !important;
+  border: 1px solid rgba(83, 255, 139, 0.08) !important;
+  border-radius: 11px !important;
+  color: #dceee2 !important;
+  background: rgba(255,255,255,0.045) !important;
+  font-size: 0.76rem !important;
+}
+
+.standings-row--head {
+  min-height: 1.65rem !important;
+  color: #88ffab !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  text-transform: uppercase !important;
+  font-size: 0.62rem !important;
+  font-weight: 1000 !important;
+  letter-spacing: 0.04em !important;
+}
+
+.standings-row.is-highlighted {
+  border-color: rgba(85, 255, 133, 0.36) !important;
+  background: linear-gradient(135deg, rgba(35, 224, 87, 0.24), rgba(255,255,255,0.05)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 22px rgba(21, 227, 78, 0.12) !important;
+}
+
+.standings-team {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.45rem !important;
+  min-width: 0 !important;
+}
+
+.standings-team .team-logo {
+  flex: 0 0 auto !important;
+  width: 1.65rem !important;
+  height: 1.65rem !important;
+  border-width: 1px !important;
+  box-shadow: none !important;
+}
+
+.standings-team strong {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  color: #fff !important;
+  font-size: 0.78rem !important;
+  font-weight: 900 !important;
+}
+
+.standings-row span:not(.standings-team) {
+  text-align: center !important;
+  font-weight: 850 !important;
+}
+
+.standings-row b { color: #57ff89 !important; }
+
+@media (max-width: 1180px) {
+  .player-watch-grid.has-standings {
+    grid-template-columns: 1fr !important;
+  }
+  .player-standings-card {
+    max-height: 330px !important;
+    border-left: 0 !important;
+    border-top: 1px solid rgba(73, 255, 125, 0.16) !important;
+  }
+}
