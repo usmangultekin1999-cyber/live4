@@ -255,3 +255,25 @@ This build keeps the v23/v25 non-IPTV data flow and updates the interface to the
 - Badminton: `04-badminton-arka-plan.png`
 - Baseball: `05-baseball-arka-plan.png`
 - FIFA, Dota, eSports and other esports categories: `06-esports-arka-plan.png`
+
+## SportMonks football data integration
+
+This build includes optional SportMonks enrichment for real football matches. The stream URLs still come from the broadcast APIs; SportMonks is used only for match data such as event info, scores, statistics, timeline/events and lineups.
+
+Add these Cloudflare Worker runtime variables:
+
+```text
+SPORTMONKS_ENABLED=1
+SPORTMONKS_API_TOKEN=your_sportmonks_api_token_here
+SPORTMONKS_BASE_URL=https://api.sportmonks.com/v3/football
+```
+
+`SPORTMONKS_API_TOKEN` must be added as a Secret. Do not commit it to GitHub.
+
+Resolution order for `/api/match-details`:
+
+1. SportMonks, only for real football/soccer broadcasts.
+2. Existing SportsAPI fallback.
+3. Empty/silent response if no matching data exists.
+
+The integration queries livescores and nearby fixtures using `participants;scores;events;statistics;lineups;state;league;venue`, then matches by home team, away team, league and time.

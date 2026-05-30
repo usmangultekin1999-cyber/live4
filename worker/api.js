@@ -999,6 +999,324 @@ export async function handleMatches(env) {
 }
 
 
+
+const DEFAULT_SPORTMONKS_BASE_URL = 'https://api.sportmonks.com/v3/football';
+
+function getSportmonksConfig(env = {}) {
+  const token = cleanString(env.SPORTMONKS_API_TOKEN || env.SPORTMONKS_TOKEN || env.SPORTMONKS_KEY);
+  const baseUrl = cleanString(env.SPORTMONKS_BASE_URL, DEFAULT_SPORTMONKS_BASE_URL).replace(/\/+$/g, '');
+  const enabledFlag = cleanString(env.SPORTMONKS_ENABLED, token ? '1' : '0');
+  return { token, baseUrl, enabled: !/^(?:0|false|no|off)$/i.test(enabledFlag) && Boolean(token) };
+}
+
+function isSportmonksEligible(match = {}) {
+  if (!match || isVirtualStreamMatch(match)) return false;
+  const sport = normalizeSport(match.category || '');
+  const haystack = normalizeLookup(`${match.category || ''} ${match.league || ''}`);
+  if (/\b(?:fifa|pes|efootball|esports?|e-spor|nba2k|dota|lol|cs:?go)\b/.test(haystack)) return false;
+  return ['football', 'soccer'].includes(sport) || /\b(?:football|soccer|futbol)\b/.test(haystack);
+}
+
+function sportmonksUrl(env, path, params = {}) {
+  const config = getSportmonksConfig(env);
+  if (!config.enabled) return null;
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const url = new URL(`${config.baseUrl}${cleanPath}`);
+  url.searchParams.set('api_token', config.token);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && String(value).trim() !== '') url.searchParams.set(key, String(value));
+  }
+  return url;
+}
+
+async function fetchOptionalSportmonksJson(env, path, params = {}, options = {}) {
+  const url = sportmonksUrl(env, path, params);
+  if (!url) return null;
+  try {
+    return await fetchJson(url, {
+      cacheTtl: options.cacheTtl ?? 45,
+      timeoutMs: options.timeoutMs ?? 5000,
+      userAgent: 'ErosMacTV-SportMonks-enrichment/1.0'
+    });
+  } catch (error) {
+    return null;
+  }
+}
+
+function unwrapSportmonksRows(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  if (Array.isArray(payload.fixtures)) return payload.fixtures;
+  if (Array.isArray(payload.results)) return payload.results;
+  return [];
+}
+
+function sportmonksCollection(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value.data)) return value.data;
+  return [];
+}
+
+function sportmonksParticipantSide(participant = {}) {
+  const metaLocation = cleanString(participant?.meta?.location || participant?.meta?.side || participant?.location || participant?.side).toLowerCase();
+  if (metaLocation.includes('home') || metaLocation === 'localteam') return 'home';
+  if (metaLocation.includes('away') || metaLocation === 'visitorteam') return 'away';
+  return '';
+}
+
+function sportmonksParticipants(fixture = {}) {
+  return sportmonksCollection(fixture.participants).map((participant, index) => ({
+    id: cleanString(participant.id ?? participant.participant_id),
+    name: cleanDisplayText(participant.name || participant.short_code || participant.code, index === 0 ? 'Home' : 'Away'),
+    logo: cleanString(participant.image_path || participant.logo_path || participant.image || participant.logo),
+    side: sportmonksParticipantSide(participant) || (index === 0 ? 'home' : index === 1 ? 'away' : '')
+  }));
+}
+
+function sportmonksHomeAway(fixture = {}) {
+  const participants = sportmonksParticipants(fixture);
+  const home = participants.find((item) => item.side === 'home') || participants[0] || {};
+  const away = participants.find((item) => item.side === 'away') || participants.find((item) => item.id !== home.id) || participants[1] || {};
+  return { home, away, participants };
+}
+
+function sportmonksEventAdapter(fixture = {}) {
+  const { home, away } = sportmonksHomeAway(fixture);
+  return {
+    id: cleanString(fixture.id),
+    homeName: home.name,
+    awayName: away.name,
+    homeLogo: home.logo,
+    awayLogo: away.logo,
+    start: cleanString(fixture.starting_at || fixture.starting_at_timestamp || fixture.date),
+    league: cleanDisplayText(fixture.league?.name || fixture.league_name || fixture.name),
+    competitionName: cleanDisplayText(fixture.league?.name || fixture.league_name),
+    sport: 'Football',
+    country: cleanDisplayText(fixture.league?.country?.name || fixture.country?.name || fixture.country_name),
+    state: cleanDisplayText(fixture.state?.name || fixture.state?.short_name || fixture.status || fixture.result_info),
+    fixture
+  };
+}
+
+function findBestSportmonksFixture(match, fixtures = []) {
+  let best = null;
+  for (const fixture of fixtures) {
+    const event = sportmonksEventAdapter(fixture);
+    if (!event.id) continue;
+    const scored = eventScore(match, event);
+    // SportMonks candidates are all football, so a solid team-name match is enough.
+    const direct = tokenScore(match.home, event.homeName) + tokenScore(match.away, event.awayName);
+    const reverse = tokenScore(match.home, event.awayName) + tokenScore(match.away, event.homeName) - 0.14;
+    const score = Math.max(scored.score, direct, reverse);
+    const reversed = reverse > direct;
+    if (!best || score > best.score) best = { fixture, event, score, reversed };
+  }
+  if (!best || best.score < 1.12) return null;
+  return best;
+}
+
+function datePartsForSportmonks() {
+  const now = new Date();
+  const days = [-1, 0, 1].map((offset) => {
+    const date = new Date(now.getTime() + offset * 86400000);
+    return date.toISOString().slice(0, 10);
+  });
+  return days;
+}
+
+async function loadSportmonksCandidates(env, match) {
+  if (!getSportmonksConfig(env).enabled || !isSportmonksEligible(match)) {
+    return { matched: null, fixtures: [], sources: [] };
+  }
+
+  const include = cleanString(
+    env.SPORTMONKS_INCLUDES,
+    'participants;scores;events;statistics;lineups;state;league;venue'
+  );
+
+  const requests = [
+    { path: '/livescores/inplay', params: { include }, source: '/livescores/inplay', cacheTtl: 25 },
+    { path: '/livescores', params: { include }, source: '/livescores', cacheTtl: 45 },
+    ...datePartsForSportmonks().map((day) => ({ path: `/fixtures/date/${day}`, params: { include }, source: `/fixtures/date/${day}`, cacheTtl: 180 }))
+  ];
+
+  const fixtures = [];
+  const sources = [];
+  const seen = new Set();
+
+  for (const requestConfig of requests) {
+    const payload = await fetchOptionalSportmonksJson(env, requestConfig.path, requestConfig.params, {
+      cacheTtl: requestConfig.cacheTtl,
+      timeoutMs: 5500
+    });
+    if (!payload) continue;
+    sources.push(requestConfig.source);
+    for (const row of unwrapSportmonksRows(payload)) {
+      const id = cleanString(row?.id);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      fixtures.push(row);
+    }
+    const matched = findBestSportmonksFixture(match, fixtures);
+    if (matched) return { matched, fixtures, sources };
+  }
+
+  return { matched: findBestSportmonksFixture(match, fixtures), fixtures, sources };
+}
+
+function sportmonksScoreValue(fixture = {}, side = 'home') {
+  const { home, away } = sportmonksHomeAway(fixture);
+  const participantId = side === 'home' ? home.id : away.id;
+  const scores = sportmonksCollection(fixture.scores);
+  const candidates = scores.filter((score) => String(score.participant_id || score.participantId || score.team_id || '') === String(participantId));
+  const preferred = candidates.find((score) => /current|regular|fulltime|2nd-half|2nd/i.test(cleanString(score.description || score.type?.name || score.type))) || candidates[candidates.length - 1];
+  const value = preferred?.score?.goals ?? preferred?.score?.total ?? preferred?.score?.score ?? preferred?.goals ?? preferred?.score;
+  return numberOrNull(value);
+}
+
+function normalizeSportmonksEvent(fixture = {}) {
+  const { home, away } = sportmonksHomeAway(fixture);
+  return compactObject({
+    id: cleanString(fixture.id),
+    name: cleanDisplayText(fixture.name, `${home.name} - ${away.name}`),
+    home: home.name,
+    away: away.name,
+    home_logo: home.logo,
+    away_logo: away.logo,
+    start: cleanString(fixture.starting_at || (fixture.starting_at_timestamp ? new Date(Number(fixture.starting_at_timestamp) * 1000).toISOString() : '')),
+    group: cleanDisplayText(fixture.league?.name || fixture.league_name),
+    groupId: cleanString(fixture.league_id || fixture.league?.id),
+    sport: 'Football',
+    state: cleanDisplayText(fixture.state?.name || fixture.state?.short_name || fixture.result_info || fixture.status),
+    country: cleanDisplayText(fixture.league?.country?.name || fixture.country?.name || fixture.country_name),
+    venue: cleanDisplayText(fixture.venue?.name),
+    home_score: sportmonksScoreValue(fixture, 'home'),
+    away_score: sportmonksScoreValue(fixture, 'away')
+  });
+}
+
+function sportmonksParticipantNameMap(fixture = {}) {
+  const map = new Map();
+  for (const participant of sportmonksParticipants(fixture)) {
+    if (participant.id) map.set(String(participant.id), participant);
+  }
+  return map;
+}
+
+function sportmonksStatTypeName(stat = {}) {
+  return cleanDisplayText(stat?.type?.name || stat?.type?.display_name || stat?.name || stat?.type_name || stat?.code || stat?.type);
+}
+
+function sportmonksStatValue(stat = {}) {
+  const raw = stat?.data?.value ?? stat?.data?.total ?? stat?.value ?? stat?.total ?? stat?.statistic ?? stat?.data;
+  if (isPlainObject(raw)) return raw.value ?? raw.total ?? raw.count ?? '';
+  return raw;
+}
+
+function normalizeSportmonksStats(fixture = {}) {
+  const participantMap = sportmonksParticipantNameMap(fixture);
+  const pairs = new Map();
+
+  for (const stat of sportmonksCollection(fixture.statistics)) {
+    const label = sportmonksStatTypeName(stat);
+    const value = sportmonksStatValue(stat);
+    const participant = participantMap.get(String(stat.participant_id || stat.participantId || stat.team_id || ''));
+    if (!label || !participant || !isStatishValue(value)) continue;
+    const key = normalizeLookup(label);
+    if (!pairs.has(key)) pairs.set(key, { label, home: '', away: '' });
+    pairs.get(key)[participant.side === 'away' ? 'away' : 'home'] = displayValue(value);
+  }
+
+  return [...pairs.values()].filter((row) => row.home !== '' && row.away !== '').slice(0, 12);
+}
+
+function isStatishValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return true;
+  if (value === null || value === undefined || typeof value === 'object') return false;
+  return /^-?\d+(?:[.,]\d+)?%?$/.test(cleanDisplayText(value, ''));
+}
+
+function normalizeSportmonksTimeline(fixture = {}) {
+  const participantMap = sportmonksParticipantNameMap(fixture);
+  return sportmonksCollection(fixture.events)
+    .map((event) => {
+      const minute = cleanDisplayText(event.minute ?? event.extra_minute ?? event.result ?? '');
+      const type = cleanDisplayText(event.type?.name || event.type?.code || event.type || event.addition || 'Event');
+      const participant = participantMap.get(String(event.participant_id || event.participantId || event.team_id || ''));
+      const player = cleanDisplayText(event.player_name || event.player?.name || event.related_player_name || event.related_player?.name || '');
+      const result = cleanDisplayText(event.result || event.info || event.details || '');
+      const text = [player, result].filter(Boolean).join(' · ');
+      if (!minute && !text) return null;
+      return { minute: minute ? `${minute}'` : '', type, team: participant?.name || '', text };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function normalizeSportmonksLineups(fixture = {}) {
+  const participantMap = sportmonksParticipantNameMap(fixture);
+  const output = { homeFormation: '', awayFormation: '', homePlayers: [], awayPlayers: [] };
+
+  for (const lineup of sportmonksCollection(fixture.lineups)) {
+    const participant = participantMap.get(String(lineup.participant_id || lineup.participantId || lineup.team_id || ''));
+    const side = participant?.side === 'away' ? 'away' : 'home';
+    const formation = cleanString(lineup.formation || lineup.formation_field || lineup.team_formation);
+    if (formation) output[`${side}Formation`] = formation;
+
+    const playerName = cleanDisplayText(lineup.player_name || lineup.player?.name || lineup.name || lineup.display_name || '');
+    const isStarting = lineup.type_id === 11 || /^starting|lineup|starter/i.test(cleanString(lineup.type?.name || lineup.type || lineup.position));
+    if (playerName && (isStarting || output[`${side}Players`].length < 11)) output[`${side}Players`].push(playerName);
+  }
+
+  output.homePlayers = [...new Set(output.homePlayers)].slice(0, 11);
+  output.awayPlayers = [...new Set(output.awayPlayers)].slice(0, 11);
+  return output.homeFormation || output.awayFormation || output.homePlayers.length || output.awayPlayers.length ? output : null;
+}
+
+async function loadSportmonksDetails(env, match) {
+  const candidates = await loadSportmonksCandidates(env, match);
+  if (!candidates.matched) return null;
+
+  let fixture = candidates.matched.fixture;
+  const fixtureId = cleanString(fixture.id);
+  const include = cleanString(
+    env.SPORTMONKS_DETAIL_INCLUDES || env.SPORTMONKS_INCLUDES,
+    'participants;scores;events;statistics;lineups;state;league;venue'
+  );
+
+  if (fixtureId) {
+    const detail = await fetchOptionalSportmonksJson(env, `/fixtures/${encodeURIComponent(fixtureId)}`, { include }, { cacheTtl: 35, timeoutMs: 5500 });
+    const detailRows = unwrapSportmonksRows(detail);
+    if (detailRows[0]) fixture = { ...fixture, ...detailRows[0] };
+    else if (isPlainObject(detail?.data)) fixture = { ...fixture, ...detail.data };
+  }
+
+  return {
+    success: true,
+    matched: true,
+    confidence: Number(candidates.matched.score.toFixed(2)),
+    source: 'sportmonks.com',
+    event: normalizeSportmonksEvent(fixture),
+    stats: normalizeSportmonksStats(fixture),
+    odds: [],
+    timeline: normalizeSportmonksTimeline(fixture),
+    lineups: normalizeSportmonksLineups(fixture),
+    related: unwrapSportmonksRows({ data: candidates.fixtures })
+      .filter((item) => String(item.id) !== String(fixtureId))
+      .map((item) => normalizeSportmonksEvent(item))
+      .slice(0, 8),
+    coverage: {
+      source: 'sportmonks.com',
+      checked_sources: candidates.sources,
+      checked_events: candidates.fixtures.length,
+      sport: 'Football'
+    }
+  };
+}
+
 function getSportsConfig(env) {
   const fullEventsUrl = cleanString(env.SPORTS_API_EVENTS_URL);
   let key = cleanString(env.SPORTS_API_KEY);
@@ -1895,6 +2213,13 @@ export async function handleMatchDetails(request, env) {
   };
 
   try {
+    const sportmonksDetails = await loadSportmonksDetails(env, match);
+    if (sportmonksDetails) {
+      return jsonResponse(sportmonksDetails, 200, {
+        'Cache-Control': 'public, max-age=25, s-maxage=60'
+      });
+    }
+
     const candidates = await loadSportsCandidates(env, match);
     const matched = candidates.matched;
 
