@@ -1,4 +1,4 @@
-import { handleMatches, handleChannels, handleMatchDetails, handleSportsStatus, jsonResponse } from './api.js';
+import { handleMatches, handleChannels, handleMatchDetails, jsonResponse } from './api.js';
 
 function looksLikeStreamRequest(pathname = '') {
   const cleanPath = pathname.toLowerCase();
@@ -28,9 +28,6 @@ export default {
       return handleMatchDetails(request, env);
     }
 
-    if (url.pathname === '/api/sports-status' && request.method === 'GET') {
-      return handleSportsStatus(request, env);
-    }
 
     if (url.pathname.startsWith('/api/')) {
       return jsonResponse({ success: false, error: 'API endpoint not found.' }, 404, {

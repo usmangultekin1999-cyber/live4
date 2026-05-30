@@ -1,81 +1,21 @@
-# ErosMacTV Cloudflare Worker Site
+# ErosMacTV Worker Site
 
-A React/Vite live match listing interface for Cloudflare Workers. The stream match list is loaded from your stream API. Live video URLs are not proxied through Cloudflare: the browser plays the original provider URL directly. Extra event data, odds, statistics, timeline, lineups and related matches are fetched server-side from SportsAPI as optional enrichment. API keys stay on Cloudflare as runtime secrets and are not exposed in the browser.
+Cloudflare Worker + Vite/React live match and channel interface for ErosMacTV.
 
-> Use this project only with stream sources and sports data feeds that you own or have permission to publish.
+This build keeps the broadcast flow simple:
 
-## Changes in v29
+- Match list: legacy match API + SLA / SportLiveAPI.
+- Channels: ErosMacTV channel API.
+- Player: uses the original stream URL directly in the visitor browser. The Worker does not proxy HLS/DASH/MP4 segments.
+- Optional odds: official odds provider configured with `ODDS_API_*`.
+- Optional standings: only from a custom official `STANDINGS_API_URL` if you add one.
 
-- Added a separate Channels tab and sidebar switch.
-- Added `/api/channels`, which loads the channel-only API server-side.
-- Channel stream URLs are decoded from the upstream `video` field and played directly in the browser; live media is not proxied through Cloudflare.
-- The channel API uses `CHANNELS_API_KEY` when configured, otherwise it reuses `MATCH_API_KEY`.
+Removed from this build:
 
-## Changes in v23
+- Previous external match-data integrations.
+- Any match details loaded from those removed providers.
 
-- Added SLA / SportLiveAPI Playback Links integration. The Worker can now load playable matches from the SLA `/lives/streams` API and map `liveList` stream lines to the existing ErosMacTV popup player.
-- Added support for multiple stream lines per match, including `m3u8`, DASH and direct playback options when the provider returns backup lines. FLV/RTMP links are kept as provider-direct iframe fallbacks instead of being proxied.
-- Added `MATCH_SOURCE_MODE` so you can use `merge`, `sla`, or `legacy` source mode.
-- The SLA auth key stays server-side in Cloudflare secrets and is never committed to GitHub or sent as a browser-visible frontend variable.
-
-## Changes in v21
-
-- Removed the left menu navigation items: Home, Live Now, Sports, Schedule, Favourites and Notifications.
-- Removed the sidebar More button. The sidebar now contains only Follow Us and Sports filters.
-- Made the desktop search box compact and right-aligned.
-- Forced category ordering everywhere: Football first, Basketball second, Volleyball third, then the remaining sports.
-- Kept popup player behaviour and direct-provider stream playback.
-
-## Changes in this version
-
-- Site name remains `ErosMacTV` everywhere, including the header.
-- Category filters are now a vertical left sidebar. Telegram and X/Twitter links are shown at the top of the sidebar.
-- Live stream proxying is explicitly disabled in the Worker. Accidental same-domain HLS/DASH/media requests such as `/v/...`, `.m3u8`, `.ts`, `.m4s` and `.mp4` are rejected instead of being fetched through Cloudflare.
-- The player now uses only the original absolute `videoid` URL from the provider. Relative stream URLs are treated as unavailable so they do not hit your Worker.
-- `/api/match-details` is now fail-safe: SportsAPI timeouts, quota issues or 5xx responses return an empty successful payload instead of a Cloudflare 503. This prevents optional match data from breaking playback.
-- SportsAPI lookups are lighter by default. Rich `/api/sportsbook` scanning is off unless `SPORTS_API_RICH_MODE=1` is added.
-- Added `/api/sports-status`, a safe debug endpoint that shows how many SportsAPI events were loaded and the nearest candidates for a stream match.
-- Added player detail panels: event info, statistics, odds, timeline, lineups and related matches.
-- Keeps the language selector for English, Turkish, German, Spanish, Chinese, Hindi and French.
-- Cleans upstream match/league text before rendering. Decorative HTML/CSS such as `<style>...</style><span>GÜNÜN MAÇI</span>` is stripped so it no longer appears on cards or player headings.
-- The match list auto-refreshes every 2 minutes.
-
-## Features
-
-- API proxy: `/api/matches` for legacy stream API + optional SLA / SportLiveAPI playback links
-- Channel proxy: `/api/channels` for the channel-only API
-- Sports details proxy: `/api/match-details`
-- Cloudflare runtime secret support through `MATCH_API_KEY`, `SLA_API_AUTH` and `SPORTS_API_KEY`
-- Multilingual UI: EN, TR, DE, ES, ZH, HI, FR
-- Search by team or league
-- Category filters with translated common sports labels
-- Responsive match cards
-- HLS, DASH, MP4 and WebM player support without server-side stream proxying; FLV/RTMP sources use provider-direct iframe fallback
-- Iframe fallback for embed-style stream URLs
-- Detail panels hide gracefully when SportsAPI has no data for a match
-- SportsAPI diagnostic coverage messages are hidden from viewers when no matching SportsAPI event exists
-
-## File structure
-
-```txt
-worker/api.js                    Shared Cloudflare API handlers
-worker/index.js                  Cloudflare Worker API router + static asset router
-functions/api/matches.js         Cloudflare Pages Functions fallback for match list
-functions/api/channels.js        Cloudflare Pages Functions fallback for channel list
-functions/api/match-details.js   Cloudflare Pages Functions fallback for match details
-functions/api/sports-status.js   Cloudflare Pages Functions fallback for SportsAPI diagnostics
-src/App.jsx                      Main React application
-src/lib/i18n.js                  Language text and category translations
-src/lib/helpers.js               Text cleanup, parsing and formatting helpers
-src/components                   Match card, category bar, player and data panels
-src/styles.css                   Visual design
-public/_headers                  Security headers
-wrangler.toml                    Cloudflare Worker deployment config
-```
-
-## Cloudflare Worker Git deploy
-
-Use these settings in the Cloudflare Worker Git deploy screen:
+## Cloudflare build settings
 
 ```txt
 Build command: npm run build
@@ -83,215 +23,55 @@ Deploy command: npx wrangler deploy
 Path: /
 ```
 
-If you uploaded the project inside a subfolder in GitHub, set `Path` to that folder name instead.
+## Required runtime variables
 
-## Environment variables
-
-After deployment, open your Worker project in Cloudflare and go to:
+Add these in Cloudflare Workers & Pages > your project > Settings > Variables and Secrets:
 
 ```txt
-Settings > Variables and Secrets
+MATCH_API_KEY          Secret
+MATCH_API_URL          https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php
+MATCH_SOURCE_MODE      merge
+
+SLA_API_AUTH           Secret
+SLA_API_URL            https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams
+
+CHANNELS_API_URL       https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/channels.php
 ```
 
-Add these values:
+`CHANNELS_API_KEY` is optional. If it is not set, the Worker uses `MATCH_API_KEY` for the channel endpoint.
+
+## Optional odds variables
 
 ```txt
-MATCH_API_KEY = your legacy stream API key
-MATCH_API_URL = https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php
-
-# SLA / SportLiveAPI playback links. Add SLA_API_AUTH as a Secret.
-SLA_API_AUTH = your SLA auth key
-SLA_API_URL = https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams
-# Optional if your provider gave you the /lives/page URL:
-SLA_API_PAGE_URL = https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/page
-# Optional: merge, sla, or legacy. Default is merge.
-MATCH_SOURCE_MODE = merge
-
-# Optional channel-list API. If omitted, MATCH_API_KEY is reused and channels.php is derived from MATCH_API_URL.
-CHANNELS_API_URL = https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/channels.php
-# CHANNELS_API_KEY = your channel API key
-
-SPORTS_API_KEY = your SportsAPI key
-SPORTS_API_BASE_URL = https://sports-api.net/api
-# Optional only if you want the heavier odds-first SportsAPI search:
-# SPORTS_API_RICH_MODE = 1
+ODDS_API_ENABLED       1
+ODDS_API_KEY           Secret
+ODDS_API_BASE_URL      https://api.the-odds-api.com/v4
+ODDS_API_REGIONS       eu,uk
+ODDS_API_MARKETS       h2h,totals,spreads
+ODDS_API_MAX_SPORT_KEYS 8
+ODDS_REDIRECT_URL      https://cryptobet545.com
 ```
 
-`MATCH_API_KEY`, `CHANNELS_API_KEY` when used, `SLA_API_AUTH` and `SPORTS_API_KEY` should be added as secrets. Do not upload `.env`, `.dev.vars`, or real API keys to GitHub.
+When odds are available, clicking any odds tile opens `ODDS_REDIRECT_URL` in a new tab.
 
-You can also use `SPORTS_API_EVENTS_URL` instead of `SPORTS_API_KEY` + `SPORTS_API_BASE_URL` if you prefer storing the complete SportsAPI events URL in Cloudflare, but the recommended setup is to keep only the key in `SPORTS_API_KEY`.
+## Optional standings variables
 
-## SLA / SportLiveAPI integration
-
-The SLA integration uses Playback Links mode. The Worker requests the SLA API server-side, normalizes matches into the existing ErosMacTV match format, and sends the visitor browser the original provider playback URL directly. It does **not** proxy live manifests or media segments through Cloudflare.
-
-Recommended configuration:
+This build no longer includes a built-in football data provider for standings. Add your own official/legal endpoint if you want the standings card to show real data:
 
 ```txt
-SLA_API_AUTH = your SLA auth key
-SLA_API_URL = https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams
-MATCH_SOURCE_MODE = merge
+STANDINGS_API_URL      https://your-official-standings-endpoint.example/table
+STANDINGS_API_KEY      Secret, optional
 ```
 
-If you want to use only the SLA API and ignore the old stream API, set:
-
-```txt
-MATCH_SOURCE_MODE = sla
-```
-
-If your provider specifically gave you a `/lives/page?auth=...` URL, do **not** commit that URL with the real auth key to GitHub. Add the auth key as `SLA_API_AUTH`; optionally set `SLA_API_PAGE_URL` to the page endpoint without the auth query. The Worker will try the page response first and fall back to the documented `/lives/streams` endpoint when needed.
-
-The default SLA sports requests include these type mappings:
-
-```txt
-1 Soccer / Football
-18 Basketball
-91 Volleyball
-94 Badminton
-16 Baseball
-3 Cricket
-13 Tennis
-17 Ice Hockey
-92 Table Tennis
-14 Snooker
-12 American Football
-151 E-sports with gameId 1, 2, 3 and 4
-```
-
-To override the requested SLA types:
-
-```txt
-SLA_API_TYPES = 1,18,91,94,151:1,151:2
-```
+The endpoint should return rows in one of these containers: `rows`, `standings`, `table`, or `data`.
+Rows may contain fields such as `position`, `team`, `logo`, `played`, `wins`, `draws`, `losses`, `gd`, and `points`.
 
 ## Local development
 
 ```bash
 npm install
 npm run build
-npx wrangler dev
+npm run dev
 ```
 
-For local development, create a `.dev.vars` file:
-
-```txt
-MATCH_API_KEY="YOUR_LEGACY_STREAM_API_KEY"
-MATCH_API_URL="https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php"
-SLA_API_AUTH="YOUR_SLA_AUTH_KEY"
-SLA_API_URL="https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams"
-MATCH_SOURCE_MODE="merge"
-SPORTS_API_KEY="YOUR_SPORTS_API_KEY"
-SPORTS_API_BASE_URL="https://sports-api.net/api"
-```
-
-## Checking SportsAPI coverage
-
-You can check whether SportsAPI contains a stream match by opening:
-
-```txt
-/api/sports-status?home=Megapolis%20FC&away=Victory%20FC&category=Football&league=09%3A00%20%7C%20Regional%20League.%20A
-```
-
-If `matched` is `false`, the stream match is not present in SportsAPI coverage. The public player hides SportsAPI diagnostic text and simply omits the extra data panels for that match.
-
-## How the SportsAPI enrichment works
-
-When a user opens a match, the Worker first checks lightweight SportsAPI event routes such as `/events/filter` and `/events/live`. If you enable `SPORTS_API_RICH_MODE=1`, it can also check `/sportsbook`, which may include events, main odds and inline mapped stats but is heavier. It compares event names with the stream match `home`, `away`, `category` and `league`, then fetches additional routes such as `/events/:id`, `/offers/:eventId`, `/group/:groupId` and statistics routes when SportsAPI exposes a usable stats ID.
-
-If SportsAPI cannot match a stream match or has no statistics/odds/lineups for that event, the site omits those public panels instead of showing diagnostic coverage text or fake values.
-
-## Player notes
-
-The player never downloads or re-serves live video through Cloudflare. It gives the visitor browser the provider URL directly and tries sources in this order:
-
-1. Direct video files such as `.mp4`, `.webm`, `.ogg`
-2. DASH `.mpd` streams
-3. HLS streams through `hls.js`
-4. Iframe fallback for embed-style, FLV or RTMP sources
-
-If a stream source blocks CORS, requires DRM, blocks your domain/referrer, or returns missing media files such as `404` for `.m3u8` segments, the frontend cannot bypass that. The stream provider must allow your domain and provide a working source.
-
-
-## Branding assets
-
-The site logo is served from `public/LOGO.PNG`. The favicon and Apple touch icon are served from `public/12.png`.
-
-
-## Cloudflare stream-load protection
-
-This version intentionally has no `/api/stream`, `/proxy`, `/hls` or media relay endpoint. If a request for a media file reaches your Worker by mistake, the Worker returns `410` and does not fetch the upstream stream. This protects your Cloudflare Worker from bandwidth/subrequest limits and keeps the stream traffic between the visitor and the provider URL.
-
-
-## v17 update
-
-The match player now opens as a fixed popup overlay again. A CSS override that caused the player to render at the bottom of the page has been removed, and the player is rendered through a React portal to prevent layout conflicts.
-
-
-## v20 changes
-
-- Removed the static Home/Live Now/Sports/Schedule/Favourites/Notifications links from the left menu.
-- Reduced and right-aligned the search area.
-- Prioritized Football, Basketball and Volleyball categories at the top of tabs, sidebar and sections.
-
-## v25 update
-
-This build is based on `erosmactv-worker-site-v23` and does not include the IPTV/Xtream/M3U source added later.
-
-Visual changes:
-- Green/white ErosMacTV theme.
-- White main content panel.
-- Green sidebar and menu styling.
-- Light modern match cards with green live badges.
-- Existing match APIs, SLA integration and SportsAPI details remain available.
-
-
-## v26 category artwork redesign
-
-This build keeps the v23/v25 non-IPTV data flow and updates the interface to the green/white sports layout. Match cards now use the six uploaded category background images:
-
-- Football, futsal, beach football and similar football categories: `01-futbol-arka-plan.png`
-- Volleyball and beach volleyball: `02-voleybol-arka-plan.png`
-- Basketball: `03-basketbol-arka-plan.png`
-- Badminton: `04-badminton-arka-plan.png`
-- Baseball: `05-baseball-arka-plan.png`
-- FIFA, Dota, eSports and other esports categories: `06-esports-arka-plan.png`
-
-## SportMonks football data integration
-
-This build includes optional SportMonks enrichment for real football matches. The stream URLs still come from the broadcast APIs; SportMonks is used only for match data such as event info, scores, statistics, timeline/events and lineups.
-
-Add these Cloudflare Worker runtime variables:
-
-```text
-SPORTMONKS_ENABLED=1
-SPORTMONKS_API_TOKEN=your_sportmonks_api_token_here
-SPORTMONKS_BASE_URL=https://api.sportmonks.com/v3/football
-```
-
-`SPORTMONKS_API_TOKEN` must be added as a Secret. Do not commit it to GitHub.
-
-Resolution order for `/api/match-details`:
-
-1. SportMonks, only for real football/soccer broadcasts.
-2. Existing SportsAPI fallback.
-3. Empty/silent response if no matching data exists.
-
-The integration queries livescores and nearby fixtures using `participants;scores;events;statistics;lineups;state;league;venue`, then matches by home team, away team, league and time.
-
-## v32 Official Odds Integration
-
-The player now supports an official odds board below the video area. It does not use SportMonks or SportsAPI for odds. Configure an official odds provider, such as The Odds API v4, through Cloudflare Variables and Secrets:
-
-```text
-ODDS_API_ENABLED=1
-ODDS_API_KEY=your_the_odds_api_key_here
-ODDS_API_BASE_URL=https://api.the-odds-api.com/v4
-ODDS_API_REGIONS=eu,uk
-ODDS_API_MARKETS=h2h,totals,spreads
-ODDS_API_MAX_SPORT_KEYS=8
-ODDS_REDIRECT_URL=https://cryptobet545.com
-```
-
-`ODDS_API_KEY` must be a Secret. When a visitor clicks an odd, it opens `ODDS_REDIRECT_URL` in a new tab.
-
-If the official odds provider does not contain the same match, the odds board is hidden instead of showing fake or generated odds.
+Never commit real API keys or secrets to GitHub.

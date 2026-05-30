@@ -46,42 +46,51 @@ function PlayerStandings({ standings = [], language }) {
   const rows = Array.isArray(standings?.rows) ? standings.rows : Array.isArray(standings) ? standings : [];
   if (!rows.length) return null;
 
+  const leagueLabel = cleanDisplayText(standings?.league, t(language, 'leagueTable'));
+  const seasonLabel = cleanDisplayText(standings?.season, '');
+
   return (
     <aside className="player-standings-card" aria-label={t(language, 'standings')}>
       <div className="player-standings-head">
         <div>
-          <span>{t(language, 'leagueTable')}</span>
+          <span>{leagueLabel}</span>
           <h3>{t(language, 'standings')}</h3>
+          {seasonLabel && <small>{seasonLabel}</small>}
         </div>
-        <small>{rows.length}</small>
+        <b>{rows.length}</b>
       </div>
 
       <div className="standings-table" role="table" aria-label={t(language, 'standings')}>
         <div className="standings-row standings-row--head" role="row">
           <span>#</span>
           <span>{t(language, 'team')}</span>
-          <span>{t(language, 'playedShort')}</span>
+          <span>W-D-L</span>
           <span>{t(language, 'goalDiffShort')}</span>
           <span>{t(language, 'pointsShort')}</span>
         </div>
 
-        {rows.slice(0, 12).map((row) => (
-          <div className={`standings-row ${row.side ? 'is-highlighted' : ''}`} role="row" key={`${row.position}-${row.team}`}>
-            <span>{formatStandingNumber(row.position)}</span>
-            <span className="standings-team">
-              <TeamLogo src={row.logo} name={row.team} />
-              <strong>{cleanDisplayText(row.team, 'Team')}</strong>
-            </span>
-            <span>{formatStandingNumber(row.played)}</span>
-            <span>{formatStandingNumber(row.gd)}</span>
-            <span><b>{formatStandingNumber(row.points)}</b></span>
-          </div>
-        ))}
+        {rows.slice(0, 14).map((row) => {
+          const form = [row.wins, row.draws, row.losses]
+            .map((value) => formatStandingNumber(value, '0'))
+            .join('-');
+
+          return (
+            <div className={`standings-row ${row.side ? 'is-highlighted' : ''}`} role="row" key={`${row.position}-${row.team}`}>
+              <span>{formatStandingNumber(row.position)}</span>
+              <span className="standings-team">
+                <TeamLogo src={row.logo} name={row.team} />
+                <strong>{cleanDisplayText(row.team, 'Team')}</strong>
+              </span>
+              <span>{form}</span>
+              <span>{formatStandingNumber(row.gd)}</span>
+              <span><b>{formatStandingNumber(row.points)}</b></span>
+            </div>
+          );
+        })}
       </div>
     </aside>
   );
 }
-
 
 function officialOddsMarkets(details = {}) {
   const data = details?.official_odds || details?.officialOdds || null;
@@ -119,6 +128,8 @@ function OfficialOddsBoard({ details, language }) {
   const markets = officialOddsMarkets(details);
   if (!markets.length) return null;
 
+  const totalSelections = markets.reduce((sum, market) => sum + market.outcomes.length, 0);
+
   return (
     <section className="official-odds-board" aria-label={t(language, 'officialOdds')}>
       <div className="official-odds-head">
@@ -126,7 +137,15 @@ function OfficialOddsBoard({ details, language }) {
           <span>{t(language, 'officialOdds')}</span>
           <h3>{t(language, 'matchOdds')}</h3>
         </div>
-        <small>{t(language, 'tapOddsToBet')}</small>
+        <a className="odds-main-cta" href={safeBetUrl(markets[0]?.redirectUrl)} target="_blank" rel="noopener noreferrer sponsored">
+          {t(language, 'tapOddsToBet')}
+        </a>
+      </div>
+
+      <div className="official-odds-strip">
+        <span>{markets.length} markets</span>
+        <i />
+        <span>{totalSelections} selections</span>
       </div>
 
       <div className="official-odds-grid">
@@ -137,7 +156,7 @@ function OfficialOddsBoard({ details, language }) {
               {market.bookmaker && <em>{market.bookmaker}</em>}
             </div>
             <div className="official-outcomes">
-              {market.outcomes.slice(0, 4).map((outcome) => (
+              {market.outcomes.slice(0, 6).map((outcome) => (
                 <a
                   className={`official-odd-chip ${outcome.side ? `is-${outcome.side}` : ''}`}
                   key={`${market.name}-${outcome.name}-${outcome.odds}`}
@@ -209,8 +228,8 @@ export default function StreamPlayer({ match, onClose, language }) {
         })
         .catch((error) => {
           if (error?.name === 'AbortError') return;
-          // Sports data is optional enrichment. Never show an error block over
-          // the broadcast and never let a SportsAPI/Cloudflare failure affect playback.
+          // Optional match data is loaded in the background. Never show an error block over
+          // the broadcast and never let a data-provider failure affect playback.
           setDetails(null);
           setDetailsError('');
           setDetailsStatus('ready');
