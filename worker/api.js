@@ -1,29 +1,6 @@
 const DEFAULT_STREAM_API_URL = 'https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php';
 const DEFAULT_CHANNEL_API_URL = 'https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/channels.php';
-const DEFAULT_SLA_API_URL = 'https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams';
-const DEFAULT_SLA_PAGE_URL = 'https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/page';
-const DEFAULT_ODDS_API_BASE_URL = 'https://api.the-odds-api.com/v4';
 const DEFAULT_ODDS_REDIRECT_URL = 'https://cryptobet545.com';
-
-const SLA_TYPE_CONFIGS = [
-  { type: 1, category: 'Football' },
-  { type: 18, category: 'Basketball' },
-  { type: 91, category: 'Volleyball' },
-  { type: 94, category: 'Badminton' },
-  { type: 16, category: 'Baseball' },
-  { type: 3, category: 'Cricket' },
-  { type: 13, category: 'Tennis' },
-  { type: 17, category: 'Ice Hockey' },
-  { type: 92, category: 'Table Tennis' },
-  { type: 14, category: 'Snooker' },
-  { type: 12, category: 'American Football' },
-  { type: 151, gameId: 1, category: 'Esports' },
-  { type: 151, gameId: 2, category: 'Esports' },
-  { type: 151, gameId: 3, category: 'Esports' },
-  { type: 151, gameId: 4, category: 'Esports' }
-];
-
-const SLA_TYPE_CATEGORIES = new Map(SLA_TYPE_CONFIGS.map((item) => [String(item.type), item.category]));
 
 const CATEGORY_TRANSLATIONS = new Map([
   ['tumu', 'All'], ['tum', 'All'], ['all', 'All'], ['diger', 'Other'], ['other', 'Other'],
@@ -349,7 +326,7 @@ async function loadLegacyStreamMatches(env) {
     err.status = 500;
     throw err;
   }
-  const upstreamJson = await fetchJson(upstreamUrl, { cacheTtl: 60 });
+  const upstreamJson = await fetchJson(upstreamUrl, { cacheTtl: 120, timeoutMs: 8000 });
   const data = Array.isArray(upstreamJson.data) ? upstreamJson.data.map(normalizeMatch).filter((match) => match.id && match.videoid) : [];
   return { success: true, count: data.length, generated_at: cleanDisplayText(upstreamJson.generated_at || ''), expires_in: cleanDisplayText(upstreamJson.expires_in || ''), data };
 }
@@ -467,484 +444,55 @@ export async function handleChannels(env) {
   }
 }
 
-function hasSlaConfig(env = {}) {
-  if (String(env.SLA_API_ENABLED || '').trim() === '0') return false;
-  if (cleanString(env.SLA_API_AUTH || env.SLA_AUTH)) return true;
-  for (const key of ['SLA_API_URL', 'SLA_STREAM_API_URL', 'SLA_API_PAGE_URL', 'SLA_PAGE_URL']) {
-    const raw = cleanString(env[key]);
-    if (!raw) continue;
-    try {
-      const parsed = new URL(raw);
-      if (parsed.searchParams.get('auth')) return true;
-    } catch (error) {}
-  }
-  return false;
-}
-
-function extractSlaUrlConfig(rawValue, fallback, auth = '') {
-  const raw = cleanString(rawValue, fallback);
-  const url = new URL(raw);
-  const urlAuth = cleanString(url.searchParams.get('auth'));
-  url.searchParams.delete('auth');
-  return { url, auth: cleanString(auth || urlAuth) };
-}
-
-function getSlaConfig(env = {}) {
-  let auth = cleanString(env.SLA_API_AUTH || env.SLA_AUTH);
-  const rawApiUrl = cleanString(env.SLA_API_URL || env.SLA_STREAM_API_URL, DEFAULT_SLA_API_URL);
-  const rawPageUrl = cleanString(env.SLA_API_PAGE_URL || env.SLA_PAGE_URL);
-  const stream = extractSlaUrlConfig(rawApiUrl, DEFAULT_SLA_API_URL, auth);
-  auth = stream.auth;
-  let page = null;
-  if (rawPageUrl) page = extractSlaUrlConfig(rawPageUrl, DEFAULT_SLA_PAGE_URL, auth);
-  if (!auth) {
-    const err = new Error('SLA_API_AUTH is not defined as a Cloudflare secret.');
-    err.status = 500;
-    throw err;
-  }
-  return { auth, streamUrl: stream.url, pageUrl: page?.url || null, isPlayed: cleanString(env.SLA_API_IS_PLAYED, '1') };
-}
-
-function getSlaTypeConfigs(env = {}) {
-  const raw = cleanString(env.SLA_API_TYPES);
-  if (!raw) return SLA_TYPE_CONFIGS;
-  const output = raw.split(',').map((chunk) => {
-    const [typePart, gamePart] = chunk.split(':').map((item) => cleanString(item));
-    const type = Number.parseInt(typePart, 10);
-    const gameId = Number.parseInt(gamePart, 10);
-    if (!Number.isFinite(type)) return null;
-    return compactObject({ type, gameId: Number.isFinite(gameId) ? gameId : undefined, category: SLA_TYPE_CATEGORIES.get(String(type)) || `Sport ${type}` });
-  }).filter(Boolean);
-  return output.length ? output : SLA_TYPE_CONFIGS;
-}
-
-function slaRequestUrl(baseUrl, config, typeConfig) {
-  const url = new URL(baseUrl.toString());
-  url.searchParams.set('auth', config.auth);
-  if (typeConfig?.type) url.searchParams.set('type', String(typeConfig.type));
-  if (typeConfig?.gameId) url.searchParams.set('gameId', String(typeConfig.gameId));
-  if (config.isPlayed) url.searchParams.set('isPlayed', config.isPlayed);
-  return url;
-}
-
-async function fetchSlaJson(url, options = {}) {
-  const payload = await fetchJson(url, { ...options, userAgent: 'ErosMacTV-SLA-integration/2.0' });
-  const errCode = Number(payload?.errCode ?? 0);
-  if (errCode !== 0) {
-    const err = new Error(cleanDisplayText(payload?.errMsg || payload?.message || `SLA API returned errCode ${errCode}.`));
-    err.status = errCode === -1 ? 401 : errCode === 99 ? 429 : 502;
-    throw err;
-  }
-  return payload;
-}
-
-function unwrapSlaEvents(payload) {
-  if (!payload) return [];
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload.data)) return payload.data;
-  if (Array.isArray(payload.events)) return payload.events;
-  if (Array.isArray(payload.list)) return payload.list;
-  if (Array.isArray(payload?.data?.list)) return payload.data.list;
-  if (Array.isArray(payload?.data?.events)) return payload.data.events;
-  return [];
-}
-
-function normalizeSlaStream(line = {}, index = 0) {
-  const url = cleanString(pick(line, ['url', 'playUrl', 'play_url', 'streamUrl', 'stream_url', 'm3u8']));
-  if (!url) return null;
-  const rawName = pick(line, ['nameEn', 'name_en', 'name', 'title', 'label']);
-  const fallbackName = index === 0 ? 'Main Stream' : `Line ${index + 1}`;
-  const type = normalizeStreamType(pick(line, ['type', 'format', 'streamType']), url);
-  const streamInfo = isPlainObject(line?.streamInfo) ? line.streamInfo : (isPlainObject(line?.stream_info) ? line.stream_info : null);
-  const height = Number(streamInfo?.Height ?? streamInfo?.height);
-  const width = Number(streamInfo?.Width ?? streamInfo?.width);
-  const frameRate = cleanDisplayText(streamInfo?.FrameRate ?? streamInfo?.frameRate ?? streamInfo?.fps);
-  return compactObject({
-    id: cleanString(pick(line, ['id', 'lineId', 'line_id']), `line-${index + 1}`),
-    name: cleanDisplayText(rawName, fallbackName),
-    url,
-    type,
-    isPlayed: line?.isPlayed === false || line?.played === false || line?.playable === false ? false : true,
-    height: Number.isFinite(height) ? height : undefined,
-    width: Number.isFinite(width) ? width : undefined,
-    frameRate
-  });
-}
-
-function streamRank(stream = {}) {
-  const name = normalizeLookup(`${stream.name || ''} ${stream.type || ''}`);
-  let rank = 0;
-  if (/fhd|full\s*hd|1080|original/.test(name)) rank += 120;
-  if (/global\s*hd|hd|高清/.test(name)) rank += 90;
-  if (/cn|tw|hk|channel/.test(name)) rank += 40;
-  if (/web|聚合/.test(name)) rank += 30;
-  if (stream.isPlayed) rank += 20;
-  if (Number.isFinite(Number(stream.height))) rank += Math.min(Number(stream.height) / 20, 80);
-  return rank;
-}
-
-function chooseBestStream(streams = []) {
-  return [...streams].filter((stream) => stream?.url && stream.isPlayed !== false).sort((a, b) => streamRank(b) - streamRank(a))[0] || streams.find((stream) => stream?.url) || null;
-}
-
-function formatSlaStartTime(row = {}) {
-  const dateStr = cleanString(pick(row, ['dateStr', 'date_str', 'startTimeText', 'start_time_text']));
-  const dateStrMatch = dateStr.match(/(?:^|\s|T)(\d{1,2}):(\d{2})(?::\d{2})?/);
-  if (dateStrMatch) return `${String(Number.parseInt(dateStrMatch[1], 10)).padStart(2, '0')}:${dateStrMatch[2]}`;
-  const rawSeconds = pick(row, ['date', 'startTime', 'start_time', 'timestamp'], '');
-  const seconds = Number(rawSeconds);
-  if (Number.isFinite(seconds) && seconds > 0) {
-    const date = new Date(seconds > 10_000_000_000 ? seconds : seconds * 1000);
-    if (!Number.isNaN(date.getTime())) return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
-  }
-  return '';
-}
-
-function slaCategory(row = {}, context = {}) {
-  const explicit = cleanDisplayText(pick(row, ['sportName', 'sportNameEn', 'sport', 'category']));
-  if (explicit) return toEnglishCategory(explicit);
-  const type = cleanString(pick(row, ['type'], context.type));
-  return SLA_TYPE_CATEGORIES.get(String(type)) || context.category || 'Other';
-}
-
-function normalizeSlaMatch(row = {}, context = {}) {
-  const category = slaCategory(row, context);
-  const leagueName = cleanDisplayText(pick(row, ['leagueNameEn', 'league_name_en', 'leagueEn', 'competitionNameEn', 'leagueName', 'league_name', 'competition', 'league']), 'Live Event');
-  const time = formatSlaStartTime(row);
-  const home = cleanDisplayText(pick(row, ['homeEn', 'home_en', 'homeNameEn', 'homeName', 'home', 'team1']), 'Home');
-  const away = cleanDisplayText(pick(row, ['awayEn', 'away_en', 'awayNameEn', 'awayName', 'away', 'team2']), 'Away');
-  const rawId = cleanString(pick(row, ['matchId', 'match_id', 'id', 'eventId', 'event_id']));
-  const liveRows = Array.isArray(row?.liveList) ? row.liveList : Array.isArray(row?.live_list) ? row.live_list : Array.isArray(row?.streams) ? row.streams : Array.isArray(row?.urls) ? row.urls : [];
-  const directUrl = cleanString(pick(row, ['url', 'playUrl', 'play_url', 'streamUrl', 'stream_url', 'm3u8']));
-  const streams = liveRows.map((line, index) => normalizeSlaStream(line, index)).filter(Boolean);
-  if (directUrl) {
-    const directStream = normalizeSlaStream({ url: directUrl, type: pick(row, ['streamType', 'format', 'type']), nameEn: 'Main Stream', isPlayed: true }, streams.length);
-    if (directStream) streams.push(directStream);
-  }
-  const uniqueStreams = [];
-  const seenUrls = new Set();
-  for (const stream of streams) {
-    if (!stream?.url || seenUrls.has(stream.url)) continue;
-    seenUrls.add(stream.url);
-    uniqueStreams.push(stream);
-  }
-  const bestStream = chooseBestStream(uniqueStreams);
-  const idBase = rawId || fallbackIdFromText(`${category}|${leagueName}|${home}|${away}|${time}`);
-  return compactObject({
-    id: `sla:${idBase}`,
-    source: 'sla',
-    upstream_id: rawId,
-    category,
-    league: time ? `${time} | ${leagueName}` : leagueName,
-    home,
-    away,
-    home_icon: cleanString(pick(row, ['homeLogo', 'home_logo', 'homeImage', 'home_image'])),
-    away_icon: cleanString(pick(row, ['awayLogo', 'away_logo', 'awayImage', 'away_image'])),
-    league_icon: cleanString(pick(row, ['leagueLogo', 'league_logo'])),
-    screenshot: cleanString(pick(row, ['screenshot', 'cover', 'preview'])),
-    home_score: pick(row, ['homeScore', 'home_score'], undefined),
-    away_score: pick(row, ['awayScore', 'away_score'], undefined),
-    progress: cleanDisplayText(pick(row, ['progressEn', 'progress_en', 'progress', 'statusText'])),
-    is_played: row?.isPlayed === false ? false : true,
-    streams: uniqueStreams,
-    videoid: bestStream?.url || ''
-  });
-}
-
-async function loadSlaPageMatches(config) {
-  if (!config.pageUrl) return [];
-  const pageUrl = slaRequestUrl(config.pageUrl, config, null);
-  const payload = await fetchSlaJson(pageUrl, { cacheTtl: 30, timeoutMs: 9000 });
-  return unwrapSlaEvents(payload).map((row) => normalizeSlaMatch(row)).filter((match) => match.id && match.videoid);
-}
-
-async function loadSlaTypedMatches(config, env = {}) {
-  const typeConfigs = getSlaTypeConfigs(env);
-  const requests = typeConfigs.map(async (typeConfig) => {
-    const url = slaRequestUrl(config.streamUrl, config, typeConfig);
-    const payload = await fetchSlaJson(url, { cacheTtl: 30, timeoutMs: 9000 });
-    return unwrapSlaEvents(payload).map((row) => normalizeSlaMatch(row, typeConfig));
-  });
-  const settled = await Promise.allSettled(requests);
-  const matches = [];
-  const failures = [];
-  for (const result of settled) {
-    if (result.status !== 'fulfilled') failures.push(result.reason);
-    else matches.push(...result.value);
-  }
-  if (!matches.length && failures.length === settled.length && failures[0]) throw failures[0];
-  return matches.filter((match) => match.id && match.videoid);
-}
-
-async function loadSlaMatches(env) {
-  if (!hasSlaConfig(env)) return { success: true, configured: false, count: 0, data: [] };
-  const config = getSlaConfig(env);
-  let data = [];
-  if (config.pageUrl) {
-    try { data = await loadSlaPageMatches(config); }
-    catch (error) { data = []; }
-  }
-  if (!data.length) {
-    const streamUrl = new URL(config.streamUrl.toString());
-    if (/\/lives\/page\/?$/i.test(streamUrl.pathname)) {
-      streamUrl.pathname = streamUrl.pathname.replace(/\/lives\/page\/?$/i, '/lives/streams');
-      config.streamUrl = streamUrl;
-    }
-    data = await loadSlaTypedMatches(config, env);
-  }
-  return { success: true, configured: true, count: data.length, generated_at: new Date().toISOString(), expires_in: '30 seconds', data };
-}
-
-function dedupeMergedMatches(matches = []) {
-  const output = [];
-  const seenIds = new Set();
-  const seenKeys = new Map();
-  for (const match of matches) {
-    if (!match?.id) continue;
-    const id = String(match.id);
-    if (seenIds.has(id)) continue;
-    const time = parseLeagueTime(match.league)?.value || '';
-    const key = [normalizeSport(match.category), normalizeTeamName(match.home), normalizeTeamName(match.away), time].filter(Boolean).join('|');
-    if (key && seenKeys.has(key)) {
-      const existingIndex = seenKeys.get(key);
-      const existing = output[existingIndex];
-      if (match.source === 'sla' && existing?.source !== 'sla') {
-        output[existingIndex] = { ...existing, ...match, home_icon: match.home_icon || existing.home_icon, away_icon: match.away_icon || existing.away_icon };
-      }
-      continue;
-    }
-    seenIds.add(id);
-    if (key) seenKeys.set(key, output.length);
-    output.push(match);
-  }
-  return output;
-}
-
 export async function handleMatches(env) {
   try {
-    const sourceMode = normalizeLookup(env.MATCH_SOURCE_MODE || 'merge');
-    const useLegacy = !['sla', 'sla only', 'sla-only'].includes(sourceMode);
-    const useSla = !['legacy', 'legacy only', 'legacy-only', 'match', 'match only', 'match-only'].includes(sourceMode);
-    const sources = [];
-    if (useSla && hasSlaConfig(env)) sources.push(loadSlaMatches(env).catch((error) => ({ success: false, source: 'sla', error })));
-    if (useLegacy && cleanString(env.MATCH_API_KEY)) sources.push(loadLegacyStreamMatches(env).catch((error) => ({ success: false, source: 'legacy', error })));
-    if (!sources.length) {
-      const err = new Error('No match source is configured. Add SLA_API_AUTH and/or MATCH_API_KEY as Cloudflare secrets.');
+    if (!cleanString(env.MATCH_API_KEY)) {
+      const err = new Error('MATCH_API_KEY is not defined as a Cloudflare secret.');
       err.status = 500;
       throw err;
     }
-    const results = await Promise.all(sources);
-    const errors = [];
-    const allMatches = [];
-    for (const result of results) {
-      if (result?.success && Array.isArray(result.data)) allMatches.push(...result.data);
-      else if (result?.error) errors.push(cleanDisplayText(result.error?.message || result.error));
-    }
-    const data = dedupeMergedMatches(allMatches);
-    if (!data.length && errors.length) {
-      const err = new Error(errors[0] || 'Could not load the match list.');
-      err.status = 502;
-      throw err;
-    }
-    return jsonResponse({ success: true, count: data.length, generated_at: new Date().toISOString(), expires_in: hasSlaConfig(env) ? '30 seconds' : '2 minutes', source_errors: errors.length ? errors : undefined, data }, 200, { 'Cache-Control': hasSlaConfig(env) ? 'public, max-age=20, s-maxage=30' : 'public, max-age=30, s-maxage=90' });
+
+    const payload = await loadLegacyStreamMatches(env);
+    return jsonResponse(
+      {
+        success: true,
+        count: payload.data.length,
+        generated_at: payload.generated_at || new Date().toISOString(),
+        expires_in: payload.expires_in || '2 minutes',
+        data: payload.data
+      },
+      200,
+      { 'Cache-Control': 'public, max-age=60, s-maxage=120, stale-while-revalidate=240' }
+    );
   } catch (error) {
-    return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Could not connect to the upstream match API.', detail: error?.detail || undefined }, error?.status || 502, { 'Cache-Control': 'no-store' });
+    return jsonResponse(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Could not connect to the upstream match API.',
+        detail: error?.detail || undefined
+      },
+      error?.status || 502,
+      { 'Cache-Control': 'no-store' }
+    );
   }
 }
 
-function getOfficialOddsConfig(env = {}) {
-  const key = cleanString(env.ODDS_API_KEY || env.THE_ODDS_API_KEY || env.OFFICIAL_ODDS_API_KEY);
-  const baseUrl = cleanString(env.ODDS_API_BASE_URL || env.THE_ODDS_API_BASE_URL, DEFAULT_ODDS_API_BASE_URL).replace(/\/+$/g, '');
-  const enabledFlag = cleanString(env.ODDS_API_ENABLED || env.OFFICIAL_ODDS_ENABLED, key ? '1' : '0');
-  return {
-    key,
-    baseUrl,
-    enabled: !/^(?:0|false|no|off)$/i.test(enabledFlag) && Boolean(key),
-    regions: cleanString(env.ODDS_API_REGIONS, 'eu,uk'),
-    markets: cleanString(env.ODDS_API_MARKETS, 'h2h,totals,spreads'),
-    maxSportKeys: Math.max(1, Math.min(60, Number.parseInt(cleanString(env.ODDS_API_MAX_SPORT_KEYS, '35'), 10) || 35)),
-    redirectUrl: cleanString(env.ODDS_REDIRECT_URL || env.CRYPTOBET_URL, DEFAULT_ODDS_REDIRECT_URL)
-  };
+
+function getOddsRedirectUrl(env = {}) {
+  return cleanString(env.ODDS_REDIRECT_URL || env.CRYPTOBET_URL || env.BET_REDIRECT_URL, DEFAULT_ODDS_REDIRECT_URL);
 }
 
-
-function stripLeagueTime(value = '') {
-  return cleanDisplayText(value).replace(/^\s*\d{1,2}:\d{2}\s*(?:\||-|•|·)?\s*/g, '').trim();
-}
-
-function officialOddsLeagueScore(match = {}, sport = {}) {
-  const league = normalizeLookup(stripLeagueTime(match.league || ''));
-  const sportText = normalizeLookup(`${sport.group || ''} ${sport.title || ''} ${sport.key || ''}`);
-  if (!league || !sportText) return 0;
-  if (sportText.includes(league) || league.includes(sportText)) return 1;
-  const leagueTokens = league.split(/\s+/).filter((token) => token.length > 2 && !/^\d+$/.test(token) && !/^(?:league|liga|lig|cup|women|men|live|stream)$/.test(token));
-  if (!leagueTokens.length) return 0;
-  let hits = 0;
-  for (const token of leagueTokens) if (sportText.includes(token)) hits += 1;
-  return hits / Math.max(leagueTokens.length, 1);
-}
-
-function officialOddsCandidatePriority(match = {}, sport = {}, hints = []) {
-  const text = normalizeLookup(`${sport.group || ''} ${sport.title || ''} ${sport.key || ''}`);
-  const hintScore = hints.some((hint) => text.includes(hint) || (hint === 'soccer' && /soccer|football/.test(text)) || (hint === 'football' && /soccer|football/.test(text))) ? 2 : 0;
-  const leagueScore = officialOddsLeagueScore(match, sport);
-  const activeScore = sport.active === false ? -2 : 0;
-  return hintScore + leagueScore + activeScore;
-}
-
-function officialOddsSportHints(match = {}) {
-  const haystack = normalizeLookup(`${match.category || ''} ${match.league || ''}`);
-  if (/fifa|pes|efootball|esports?|e-spor|dota|lol|cs:?go|nba2k/.test(haystack)) return ['Esports'];
-  if (/basket/.test(haystack)) return ['Basketball'];
-  if (/volley/.test(haystack)) return ['Volleyball'];
-  if (/badminton/.test(haystack)) return ['Badminton'];
-  if (/baseball|beyzbol/.test(haystack)) return ['Baseball'];
-  if (/ice hockey|hockey|buz hokeyi/.test(haystack)) return ['Ice Hockey'];
-  if (/tennis|tenis/.test(haystack)) return ['Tennis'];
-  if (/cricket|kriket/.test(haystack)) return ['Cricket'];
-  if (/rugby/.test(haystack)) return ['Rugby'];
-  if (/mma|boxing|boks/.test(haystack)) return ['MMA', 'Boxing'];
-  if (/football|soccer|futbol|futsal|beach football|mermer futbolu/.test(haystack)) return ['Soccer', 'Football'];
-  return ['Soccer', 'Basketball', 'Tennis'];
-}
-
-function officialOddsUrl(config, path, params = {}) {
-  const url = new URL(`${config.baseUrl}${path.startsWith('/') ? path : `/${path}`}`);
-  url.searchParams.set('apiKey', config.key);
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && String(value).trim() !== '') url.searchParams.set(key, String(value));
-  }
-  return url;
-}
-
-async function fetchOptionalOfficialOddsJson(config, path, params = {}, options = {}) {
-  try {
-    return await fetchJson(officialOddsUrl(config, path, params), { cacheTtl: options.cacheTtl ?? 90, timeoutMs: options.timeoutMs ?? 4500, userAgent: 'ErosMacTV-official-odds/1.0' });
-  } catch (error) {
-    return null;
-  }
-}
-
-function normalizeOfficialOddsPrice(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number <= 1 || number > 1000) return '';
-  return number.toFixed(2);
-}
-
-function normalizeOfficialOddsOutcome(outcome = {}, match = {}) {
-  const name = cleanDisplayText(outcome.name || outcome.description || outcome.label, 'Selection');
-  const point = outcome.point ?? outcome.handicap ?? outcome.total;
-  const price = normalizeOfficialOddsPrice(outcome.price ?? outcome.odds ?? outcome.decimal);
-  if (!name || !price) return null;
-  let displayName = name;
-  if (point !== undefined && point !== null && String(point).trim() !== '') {
-    const pointNumber = Number(point);
-    const pointText = Number.isFinite(pointNumber) ? (pointNumber > 0 ? `+${pointNumber}` : String(pointNumber)) : cleanDisplayText(point);
-    if (!displayName.includes(pointText)) displayName = `${displayName} ${pointText}`;
-  }
-  const side = tokenScore(name, match.home) > 0.62 ? 'home' : tokenScore(name, match.away) > 0.62 ? 'away' : '';
-  return compactObject({ name: displayName, odds: price, side, sourceName: cleanDisplayText(outcome.name), point: point ?? undefined });
-}
-
-function normalizeOfficialMarketKey(key = '') {
-  const clean = cleanDisplayText(key, 'Market').toLowerCase();
-  if (clean === 'h2h') return 'Match Winner';
-  if (clean === 'totals') return 'Total Goals';
-  if (clean === 'spreads') return 'Handicap';
-  return cleanDisplayText(key, 'Market').replace(/[_-]+/g, ' ');
-}
-
-function normalizeOfficialOddsMarkets(event = {}, match = {}, redirectUrl = DEFAULT_ODDS_REDIRECT_URL) {
-  const bookmakers = Array.isArray(event.bookmakers) ? event.bookmakers : [];
-  const markets = [];
-  const seen = new Set();
-  for (const bookmaker of bookmakers.slice(0, 8)) {
-    const bookmakerTitle = cleanDisplayText(bookmaker.title || bookmaker.key, 'Bookmaker');
-    for (const market of Array.isArray(bookmaker.markets) ? bookmaker.markets : []) {
-      const marketKey = cleanDisplayText(market.key || market.name, 'market');
-      const outcomes = (Array.isArray(market.outcomes) ? market.outcomes : []).map((outcome) => normalizeOfficialOddsOutcome(outcome, match)).filter(Boolean).slice(0, 6);
-      if (!outcomes.length) continue;
-      const normalizedName = normalizeOfficialMarketKey(marketKey);
-      const key = `${normalizedName}-${outcomes.map((outcome) => `${outcome.name}:${outcome.odds}`).join('|')}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      markets.push({ name: normalizedName, bookmaker: bookmakerTitle, outcomes, redirect_url: redirectUrl });
-      if (markets.length >= 6) return markets;
-    }
-  }
-  return markets;
-}
-
-function officialOddsEventScore(match, event = {}) {
-  const home = cleanDisplayText(event.home_team || event.home || '');
-  const away = cleanDisplayText(event.away_team || event.away || '');
-  if (!home || !away) return 0;
-  const direct = tokenScore(match.home, home) + tokenScore(match.away, away);
-  const reverse = tokenScore(match.home, away) + tokenScore(match.away, home) - 0.18;
-  return Math.max(direct, reverse);
-}
-
-async function loadOfficialOdds(env, match = {}) {
-  const config = getOfficialOddsConfig(env);
+function loadBetRedirectPayload(env, match = {}) {
   if (match?.is_channel) return null;
 
-  const fallback = {
-    source: 'official-odds',
+  return {
+    source: 'cryptobet-links',
     matched: false,
     markets: [],
-    redirect_url: config.redirectUrl,
-    fallback: true
-  };
-
-  if (!config.enabled || isVirtualStreamMatch(match)) return { ...fallback, disabled: !config.enabled, reason: config.enabled ? 'virtual_or_esports_match' : 'odds_api_disabled' };
-
-  const sportsPayload = await fetchOptionalOfficialOddsJson(config, '/sports', {}, { cacheTtl: 3600, timeoutMs: 4500 });
-  const sports = Array.isArray(sportsPayload) ? sportsPayload : [];
-  const hints = officialOddsSportHints(match).map((item) => normalizeLookup(item));
-  const enriched = sports
-    .filter((sport) => sport?.active !== false)
-    .map((sport) => ({
-      key: cleanString(sport.key),
-      group: cleanDisplayText(sport.group || sport.title),
-      title: cleanDisplayText(sport.title || sport.description || sport.key),
-      active: sport.active,
-      priority: officialOddsCandidatePriority(match, sport, hints)
-    }))
-    .filter((sport) => sport.key)
-    .sort((a, b) => b.priority - a.priority || officialOddsLeagueScore(match, b) - officialOddsLeagueScore(match, a));
-
-  const primaryCandidates = enriched.filter((sport) => sport.priority > 0).slice(0, config.maxSportKeys);
-  const fallbackCandidates = enriched.filter((sport) => !primaryCandidates.some((candidate) => candidate.key === sport.key)).slice(0, Math.max(3, Math.min(10, Math.floor(config.maxSportKeys / 2))));
-  const searchList = [...primaryCandidates, ...fallbackCandidates].slice(0, config.maxSportKeys);
-
-  const checkedSports = [];
-  let best = null;
-  for (const sport of searchList) {
-    checkedSports.push(sport.key);
-    const events = await fetchOptionalOfficialOddsJson(config, `/sports/${encodeURIComponent(sport.key)}/odds`, { regions: config.regions, markets: config.markets, oddsFormat: 'decimal', dateFormat: 'iso' }, { cacheTtl: 60, timeoutMs: 5000 });
-    for (const event of Array.isArray(events) ? events : []) {
-      const teamScore = officialOddsEventScore(match, event);
-      if (teamScore <= 0) continue;
-      const score = teamScore + Math.min(0.16, officialOddsLeagueScore(match, sport) * 0.16);
-      if (!best || score > best.score) best = { event, score, sport };
-    }
-    if (best?.score >= 1.24) break;
-  }
-  if (!best || best.score < 0.92) return { ...fallback, checked_sports: checkedSports, reason: 'no_matching_official_event' };
-  const markets = normalizeOfficialOddsMarkets(best.event, match, config.redirectUrl);
-  return {
-    source: 'official-odds',
-    matched: markets.length > 0,
-    confidence: Number(best.score.toFixed(2)),
-    sport_key: best.sport.key,
-    event_id: cleanString(best.event.id),
-    home: cleanDisplayText(best.event.home_team),
-    away: cleanDisplayText(best.event.away_team),
-    commence_time: cleanString(best.event.commence_time),
-    checked_sports: checkedSports,
-    redirect_url: config.redirectUrl,
-    markets,
-    reason: markets.length ? undefined : 'official_event_without_markets'
+    redirect_url: getOddsRedirectUrl(env),
+    fallback: true,
+    external_provider: false,
+    reason: 'external_odds_provider_removed'
   };
 }
 
@@ -997,7 +545,7 @@ export async function handleMatchDetails(request, env) {
     progress: cleanDisplayText(url.searchParams.get('progress'))
   };
   try {
-    const officialOdds = await loadOfficialOdds(env, match);
+    const betPayload = loadBetRedirectPayload(env, match);
     return jsonResponse({
       success: true,
       matched: true,
@@ -1005,7 +553,7 @@ export async function handleMatchDetails(request, env) {
       event: normalizeEventFromMatch(match),
       stats: [],
       odds: [],
-      official_odds: officialOdds,
+      official_odds: betPayload,
       timeline: [],
       lineups: null,
       related: [],
@@ -1019,7 +567,7 @@ export async function handleMatchDetails(request, env) {
       event: normalizeEventFromMatch(match),
       stats: [],
       odds: [],
-      official_odds: null,
+      official_odds: loadBetRedirectPayload(env, match),
       timeline: [],
       lineups: null,
       related: [],
