@@ -3143,3 +3143,166 @@ body::after {
   .player-bottom-stack .official-outcomes,
   .player-bottom-stack .official-odds-market.is-fallback-market .official-outcomes { grid-template-columns: 1fr !important; }
 }
+
+/* v36: remove league table and recolor odds/event sections with the main ErosMacTV green */
+.player-bottom-stack.odds-only {
+  grid-template-columns: minmax(0, 1fr) !important;
+  padding: 1rem !important;
+  border-top: 1px solid rgba(0, 118, 42, 0.16) !important;
+  background:
+    radial-gradient(38rem 16rem at 12% 0%, rgba(0, 176, 64, 0.18), transparent 72%),
+    linear-gradient(180deg, #f2fbf5 0%, #ffffff 100%) !important;
+}
+
+.player-bottom-stack.odds-only .player-standings-card {
+  display: none !important;
+}
+
+.player-bottom-stack.odds-only .official-odds-board {
+  overflow: hidden !important;
+  padding: 0 !important;
+  border: 1px solid rgba(0, 127, 44, 0.22) !important;
+  border-radius: 24px !important;
+  color: #ffffff !important;
+  background:
+    radial-gradient(34rem 18rem at 0% 0%, rgba(18, 214, 84, 0.32), transparent 68%),
+    radial-gradient(28rem 14rem at 100% 100%, rgba(0, 71, 25, 0.62), transparent 70%),
+    linear-gradient(135deg, #003d17 0%, #006524 44%, #009737 100%) !important;
+  box-shadow: 0 22px 46px rgba(0, 85, 32, 0.18), inset 0 1px 0 rgba(255,255,255,0.20) !important;
+}
+
+.player-bottom-stack.odds-only .official-odds-head {
+  margin: 0 !important;
+  padding: 1rem 1.1rem 0.82rem !important;
+  border-bottom: 1px solid rgba(255,255,255,0.16) !important;
+  background: linear-gradient(180deg, rgba(0, 42, 16, 0.38), rgba(0, 42, 16, 0.06)) !important;
+}
+
+.player-bottom-stack.odds-only .official-odds-head span {
+  color: #98ffb9 !important;
+}
+
+.player-bottom-stack.odds-only .official-odds-head h3 {
+  color: #ffffff !important;
+}
+
+.player-bottom-stack.odds-only .official-odds-head small {
+  color: rgba(237,255,242,0.82) !important;
+  background: rgba(255,255,255,0.12) !important;
+}
+
+.player-bottom-stack.odds-only .official-odds-grid {
+  padding: 1rem !important;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)) !important;
+  gap: 0.8rem !important;
+}
+
+.player-bottom-stack.odds-only .official-odds-market,
+.player-bottom-stack.odds-only .official-odds-market.is-fallback-market {
+  border: 1px solid rgba(255,255,255,0.20) !important;
+  background: rgba(0, 32, 12, 0.34) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 14px 28px rgba(0, 26, 10, 0.14) !important;
+}
+
+.player-bottom-stack.odds-only .official-market-title strong {
+  color: #ffffff !important;
+}
+
+.player-bottom-stack.odds-only .official-market-title em {
+  color: #dffff0 !important;
+  background: rgba(255,255,255,0.14) !important;
+}
+
+.player-bottom-stack.odds-only .official-odd-chip,
+.player-bottom-stack.odds-only .official-odd-chip.is-link-only {
+  border-color: rgba(255,255,255,0.20) !important;
+  color: #ffffff !important;
+  background: rgba(255,255,255,0.10) !important;
+}
+
+.player-bottom-stack.odds-only .official-odd-chip:hover {
+  transform: translateY(-1px) !important;
+  border-color: rgba(164, 255, 190, 0.72) !important;
+  background: rgba(255,255,255,0.18) !important;
+  box-shadow: 0 14px 26px rgba(0, 29, 10, 0.20) !important;
+}
+
+.player-bottom-stack.odds-only .official-odd-chip span,
+.player-bottom-stack.odds-only .official-odd-chip.is-link-only span {
+  color: rgba(240,255,244,0.86) !important;
+}
+
+.player-bottom-stack.odds-only .official-odd-chip strong,
+.player-bottom-stack.odds-only .official-odd-chip.is-link-only strong {
+  color: #a5ffc1 !important;
+}
+
+.player-extra-data .event-info-panel,
+.player-extra-data .embedded-odds-panel,
+.player-panel .event-info-panel,
+.player-panel .embedded-odds-panel {
+  overflow: hidden !important;
+  border: 1px solid rgba(0, 126, 45, 0.22) !important;
+  color: #ffffff !important;
+  background:
+    radial-gradient(24rem 14rem at 0% 0%, rgba(23, 224, 91, 0.28), transparent 72%),
+    linear-gradient(135deg, #003c16 0%, #006623 54%, #009738 100%) !important;
+  box-shadow: 0 16px 34px rgba(0, 77, 28, 0.16), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+}
+
+.player-extra-data .event-info-panel .insight-heading,
+.player-extra-data .embedded-odds-panel .insight-heading,
+.player-panel .event-info-panel .insight-heading,
+.player-panel .embedded-odds-panel .insight-heading {
+  border-bottom-color: rgba(255,255,255,0.16) !important;
+  background: rgba(0, 31, 12, 0.22) !important;
+}
+
+.player-extra-data .event-info-panel .insight-heading h3,
+.player-extra-data .embedded-odds-panel .insight-heading h3,
+.player-panel .event-info-panel .insight-heading h3,
+.player-panel .embedded-odds-panel .insight-heading h3,
+.player-extra-data .event-info-panel .mini-team strong,
+.player-panel .event-info-panel .mini-team strong,
+.player-extra-data .embedded-odds-panel .odds-market h4,
+.player-panel .embedded-odds-panel .odds-market h4 {
+  color: #ffffff !important;
+}
+
+.player-extra-data .event-info-panel .insight-heading span,
+.player-extra-data .embedded-odds-panel .insight-heading span,
+.player-panel .event-info-panel .insight-heading span,
+.player-panel .embedded-odds-panel .insight-heading span {
+  color: #053316 !important;
+  background: #baffcd !important;
+}
+
+.player-extra-data .event-info-panel .event-card-mini > span,
+.player-panel .event-info-panel .event-card-mini > span {
+  color: #baffcd !important;
+}
+
+.player-extra-data .event-info-panel .event-info-list div,
+.player-panel .event-info-panel .event-info-list div {
+  border-top-color: rgba(255,255,255,0.16) !important;
+}
+
+.player-extra-data .event-info-panel .event-info-list dt,
+.player-extra-data .event-info-panel .event-info-list dd,
+.player-extra-data .embedded-odds-panel .odds-chip span,
+.player-panel .event-info-panel .event-info-list dt,
+.player-panel .event-info-panel .event-info-list dd,
+.player-panel .embedded-odds-panel .odds-chip span {
+  color: rgba(242,255,246,0.84) !important;
+}
+
+.player-extra-data .embedded-odds-panel .odds-chip,
+.player-panel .embedded-odds-panel .odds-chip {
+  border: 1px solid rgba(255,255,255,0.18) !important;
+  background: rgba(255,255,255,0.10) !important;
+}
+
+.player-extra-data .embedded-odds-panel .odds-chip strong,
+.player-panel .embedded-odds-panel .odds-chip strong {
+  color: #baffcd !important;
+}

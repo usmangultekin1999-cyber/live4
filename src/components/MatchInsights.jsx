@@ -205,7 +205,7 @@ function EventInfo({ details, match, language, hasAdvancedData = false }) {
   ].filter(([, value]) => value);
 
   return (
-    <Panel title={t(language, 'eventInfo')} badge={details?.matched && hasAdvancedData ? t(language, 'apiMatched') : undefined}>
+    <Panel title={t(language, 'eventInfo')} className="event-info-panel" badge={details?.matched && hasAdvancedData ? t(language, 'apiMatched') : undefined}>
       <div className="event-card-mini">
         <div className="mini-team">
           <TeamLogo src={event.home_logo || match.home_icon} name={home} />

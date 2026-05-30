@@ -269,8 +269,6 @@ export default function StreamPlayer({ match, onClose, language }) {
   const home = cleanDisplayText(match?.home, 'Home');
   const away = isChannel ? '' : cleanDisplayText(match?.away, 'Away');
   const displayTitle = isChannel || !away ? home : `${home} ${t(language, 'vs')} ${away}`;
-  const standings = details?.standings?.rows?.length ? details.standings : (!isChannel ? buildFallbackScoreTable(match) : null);
-
 
   useEffect(() => {
     setSelectedStreamIndex(0);
@@ -523,8 +521,7 @@ export default function StreamPlayer({ match, onClose, language }) {
         </div>
 
         {!isChannel && (
-          <div className="player-bottom-stack">
-            {standings && <PlayerStandings standings={standings} match={match} language={language} />}
+          <div className="player-bottom-stack odds-only">
             <OfficialOddsBoard details={details} match={match} language={language} />
           </div>
         )}
