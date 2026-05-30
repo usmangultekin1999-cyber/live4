@@ -1,5 +1,5 @@
 import { handleChannels } from '../../worker/api.js';
 
-export async function onRequestGet({ request, env }) {
-  return handleChannels(request, env);
+export async function onRequestGet({ env }) {
+  return handleChannels(env);
 }

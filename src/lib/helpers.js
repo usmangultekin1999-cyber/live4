@@ -244,9 +244,30 @@ export function setMatchUrl(matchId) {
   const url = new URL(window.location.href);
   if (matchId) {
     url.searchParams.set('match', matchId);
+    url.searchParams.delete('channel');
   } else {
     url.searchParams.delete('match');
   }
 
   window.history.pushState({ matchId }, '', url);
+}
+
+
+export function getChannelFromUrl() {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get('channel');
+}
+
+export function setChannelUrl(channelId) {
+  if (typeof window === 'undefined') return;
+
+  const url = new URL(window.location.href);
+  if (channelId) {
+    url.searchParams.set('channel', channelId);
+    url.searchParams.delete('match');
+  } else {
+    url.searchParams.delete('channel');
+  }
+
+  window.history.pushState({ channelId }, '', url);
 }

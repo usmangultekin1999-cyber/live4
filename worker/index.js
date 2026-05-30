@@ -1,4 +1,4 @@
-import { handleMatches, handleMatchDetails, handleSportsStatus, jsonResponse } from './api.js';
+import { handleMatches, handleChannels, handleMatchDetails, handleSportsStatus, jsonResponse } from './api.js';
 
 function looksLikeStreamRequest(pathname = '') {
   const cleanPath = pathname.toLowerCase();
@@ -18,6 +18,10 @@ export default {
 
     if (url.pathname === '/api/matches' && request.method === 'GET') {
       return handleMatches(env);
+    }
+
+    if (url.pathname === '/api/channels' && request.method === 'GET') {
+      return handleChannels(env);
     }
 
     if (url.pathname === '/api/match-details' && request.method === 'GET') {

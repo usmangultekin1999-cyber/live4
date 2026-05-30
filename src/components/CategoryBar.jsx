@@ -16,12 +16,33 @@ const SOCIAL_LINKS = [
   }
 ];
 
-export default function CategoryBar({ categories, activeCategory, onChange, language }) {
+export default function CategoryBar({ categories, activeCategory, onChange, language, viewMode = 'matches', onViewModeChange, channelsCount = 0 }) {
   return (
     <aside className="category-shell category-shell--compact" aria-label={t(language, 'categoriesAria')}>
       <a className="sidebar-brand" href="/" aria-label="ErosMacTV home">
         <img src="/LOGO.PNG" alt="ErosMacTV" />
       </a>
+
+      <div className="category-mode-tabs" aria-label={t(language, 'contentTabsAria')}>
+        <button
+          type="button"
+          className={viewMode === 'matches' ? 'is-active' : ''}
+          onClick={() => onViewModeChange?.('matches')}
+        >
+          <span aria-hidden="true">●</span>
+          <strong>{t(language, 'liveMatches')}</strong>
+        </button>
+        <button
+          type="button"
+          className={viewMode === 'channels' ? 'is-active' : ''}
+          onClick={() => onViewModeChange?.('channels')}
+        >
+          <span aria-hidden="true">📺</span>
+          <strong>{t(language, 'channels')}</strong>
+          <small>{channelsCount}</small>
+        </button>
+      </div>
+
       <div className="category-socials">
         <p>{t(language, 'socialTitle')}</p>
         <div className="social-link-list">

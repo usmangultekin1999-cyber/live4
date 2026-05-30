@@ -1,4 +1,5 @@
 const DEFAULT_STREAM_API_URL = 'https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/api.php';
+const DEFAULT_CHANNEL_API_URL = 'https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/channels.php';
 const DEFAULT_SPORTS_API_BASE_URL = 'https://sports-api.net/api';
 const DEFAULT_SPORTS_EVENTS_PATH = '/events';
 const DEFAULT_SLA_API_URL = 'https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/streams';
@@ -30,6 +31,11 @@ const CATEGORY_TRANSLATIONS = new Map([
   ['all', 'All'],
   ['diger', 'Other'],
   ['other', 'Other'],
+  ['channels', 'Channels'],
+  ['kanallar', 'Channels'],
+  ['canli tv', 'Channels'],
+  ['live tv', 'Channels'],
+  ['tv channels', 'Channels'],
   ['futbol', 'Football'],
   ['football', 'Football'],
   ['soccer', 'Football'],
@@ -389,6 +395,149 @@ async function loadLegacyStreamMatches(env) {
     expires_in: cleanDisplayText(upstreamJson.expires_in || ''),
     data
   };
+}
+
+function channelApiUrlFromEnv(env = {}) {
+  const explicitUrl = cleanString(env.CHANNELS_API_URL || env.CHANNEL_API_URL);
+  const legacyUrl = cleanString(env.MATCH_API_URL);
+  const apiKey = cleanString(env.CHANNELS_API_KEY || env.CHANNEL_API_KEY || env.MATCH_API_KEY);
+
+  let rawUrl = explicitUrl;
+  if (!rawUrl && legacyUrl) {
+    try {
+      const parsed = new URL(legacyUrl);
+      parsed.pathname = parsed.pathname.replace(/api\.php$/i, 'channels.php');
+      rawUrl = parsed.toString();
+    } catch (error) {
+      rawUrl = DEFAULT_CHANNEL_API_URL;
+    }
+  }
+  if (!rawUrl) rawUrl = DEFAULT_CHANNEL_API_URL;
+
+  if (!apiKey) {
+    const err = new Error('CHANNELS_API_KEY or MATCH_API_KEY is not defined as a Cloudflare secret.');
+    err.status = 500;
+    throw err;
+  }
+
+  try {
+    const url = new URL(rawUrl);
+    url.searchParams.set('api_key', apiKey);
+    return url;
+  } catch (error) {
+    const err = new Error('CHANNELS_API_URL is not a valid URL.');
+    err.status = 500;
+    throw err;
+  }
+}
+
+function decodeChannelVideoUrl(value = '') {
+  const raw = cleanString(value);
+  if (!raw) return '';
+
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  try {
+    const parsed = new URL(raw, 'https://erosmactv.local/');
+    const id = cleanString(parsed.searchParams.get('id'));
+    if (/^https?:\/\//i.test(id)) return id;
+    const urlParam = cleanString(parsed.searchParams.get('url') || parsed.searchParams.get('video'));
+    if (/^https?:\/\//i.test(urlParam)) return urlParam;
+  } catch (error) {
+    // Fall through to a manual decode attempt below.
+  }
+
+  const idMatch = raw.match(/[?&]id=([^&]+)/i) || raw.match(/^id=([^&]+)/i);
+  if (idMatch) {
+    try {
+      const decoded = decodeURIComponent(idMatch[1]);
+      if (/^https?:\/\//i.test(decoded)) return decoded;
+    } catch (error) {
+      // Ignore malformed encoded values.
+    }
+  }
+
+  return '';
+}
+
+function normalizeChannel(row = {}, index = 0) {
+  const name = cleanDisplayText(pick(row, ['ad', 'name', 'title', 'channel', 'label']), `Channel ${index + 1}`);
+  const seo = cleanString(pick(row, ['seo', 'slug', 'id']), fallbackIdFromText(name));
+  const videoUrl = decodeChannelVideoUrl(pick(row, ['video', 'videoid', 'url', 'stream', 'stream_url', 'streamUrl']));
+  const logo = cleanString(pick(row, ['logo', 'icon', 'image', 'img', 'poster']));
+  const stream = videoUrl ? normalizeStreamLine({ name: 'Main Stream', nameEn: 'Main Stream', url: videoUrl, type: 'm3u8' }, 0) : null;
+
+  return compactObject({
+    id: `channel:${seo || fallbackIdFromText(`${name}|${index}`)}`,
+    source: 'channels',
+    provider: 'ErosMacTV',
+    upstream_id: seo,
+    is_channel: true,
+    category: 'Channels',
+    league: 'Live TV',
+    home: name,
+    away: '',
+    home_icon: logo,
+    away_icon: '',
+    videoid: videoUrl,
+    streams: stream ? [stream] : []
+  });
+}
+
+function unwrapChannelRows(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.channels)) return payload.channels;
+  if (Array.isArray(payload.items)) return payload.items;
+  if (Array.isArray(payload.list)) return payload.list;
+  if (Array.isArray(payload.results)) return payload.results;
+  if (Array.isArray(payload?.data?.channels)) return payload.data.channels;
+  if (Array.isArray(payload?.data?.items)) return payload.data.items;
+  if (Array.isArray(payload?.data?.list)) return payload.data.list;
+  return [];
+}
+
+async function loadChannels(env) {
+  const upstreamUrl = channelApiUrlFromEnv(env);
+  const upstreamJson = await fetchJson(upstreamUrl, { cacheTtl: 60, timeoutMs: 8000 });
+  const rows = unwrapChannelRows(upstreamJson);
+  const seen = new Set();
+  const data = [];
+
+  rows.forEach((row, index) => {
+    const channel = normalizeChannel(row, index);
+    if (!channel.id || !channel.videoid || seen.has(channel.id)) return;
+    seen.add(channel.id);
+    data.push(channel);
+  });
+
+  return {
+    success: true,
+    count: data.length,
+    generated_at: cleanDisplayText(upstreamJson.generated_at || ''),
+    expires_in: cleanDisplayText(upstreamJson.expires_in || '2 hours'),
+    data
+  };
+}
+
+export async function handleChannels(env) {
+  try {
+    const payload = await loadChannels(env);
+    return jsonResponse(payload, 200, {
+      'Cache-Control': 'public, max-age=30, s-maxage=90'
+    });
+  } catch (error) {
+    return jsonResponse(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Could not load the channel list.',
+        detail: error?.detail || undefined
+      },
+      error?.status || 502,
+      { 'Cache-Control': 'no-store' }
+    );
+  }
 }
 
 

@@ -22,6 +22,7 @@ function normalizeClientMatch(match = {}) {
     id: cleanDisplayText(match.id),
     source: cleanDisplayText(match.source),
     upstream_id: cleanDisplayText(match.upstream_id),
+    is_channel: match.is_channel === true,
     category: cleanDisplayText(match.category, 'Other'),
     league: cleanDisplayText(match.league),
     home: cleanDisplayText(match.home, 'Home'),
@@ -53,6 +54,29 @@ export async function fetchMatches({ signal } = {}) {
 
   if (!response.ok || !payload?.success) {
     throw new Error(payload?.error || 'Could not load the match list.');
+  }
+
+  return {
+    ...payload,
+    data: Array.isArray(payload.data) ? payload.data.map(normalizeClientMatch) : []
+  };
+}
+
+
+export async function fetchChannels({ signal } = {}) {
+  const response = await fetch('/api/channels', {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json'
+    },
+    cache: 'no-store',
+    signal
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || !payload?.success) {
+    throw new Error(payload?.error || 'Could not load the channel list.');
   }
 
   return {

@@ -4,6 +4,13 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 
 > Use this project only with stream sources and sports data feeds that you own or have permission to publish.
 
+## Changes in v29
+
+- Added a separate Channels tab and sidebar switch.
+- Added `/api/channels`, which loads the channel-only API server-side.
+- Channel stream URLs are decoded from the upstream `video` field and played directly in the browser; live media is not proxied through Cloudflare.
+- The channel API uses `CHANNELS_API_KEY` when configured, otherwise it reuses `MATCH_API_KEY`.
+
 ## Changes in v23
 
 - Added SLA / SportLiveAPI Playback Links integration. The Worker can now load playable matches from the SLA `/lives/streams` API and map `liveList` stream lines to the existing ErosMacTV popup player.
@@ -36,6 +43,7 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 ## Features
 
 - API proxy: `/api/matches` for legacy stream API + optional SLA / SportLiveAPI playback links
+- Channel proxy: `/api/channels` for the channel-only API
 - Sports details proxy: `/api/match-details`
 - Cloudflare runtime secret support through `MATCH_API_KEY`, `SLA_API_AUTH` and `SPORTS_API_KEY`
 - Multilingual UI: EN, TR, DE, ES, ZH, HI, FR
@@ -53,6 +61,7 @@ A React/Vite live match listing interface for Cloudflare Workers. The stream mat
 worker/api.js                    Shared Cloudflare API handlers
 worker/index.js                  Cloudflare Worker API router + static asset router
 functions/api/matches.js         Cloudflare Pages Functions fallback for match list
+functions/api/channels.js        Cloudflare Pages Functions fallback for channel list
 functions/api/match-details.js   Cloudflare Pages Functions fallback for match details
 functions/api/sports-status.js   Cloudflare Pages Functions fallback for SportsAPI diagnostics
 src/App.jsx                      Main React application
@@ -98,13 +107,17 @@ SLA_API_PAGE_URL = https://env-00jxh1c541d5.dev-hz.cloudbasefunction.cn/lives/pa
 # Optional: merge, sla, or legacy. Default is merge.
 MATCH_SOURCE_MODE = merge
 
+# Optional channel-list API. If omitted, MATCH_API_KEY is reused and channels.php is derived from MATCH_API_URL.
+CHANNELS_API_URL = https://adbf5a778175ee757c34d0eba4e932bc.sbs/erosmac/channels.php
+# CHANNELS_API_KEY = your channel API key
+
 SPORTS_API_KEY = your SportsAPI key
 SPORTS_API_BASE_URL = https://sports-api.net/api
 # Optional only if you want the heavier odds-first SportsAPI search:
 # SPORTS_API_RICH_MODE = 1
 ```
 
-`MATCH_API_KEY`, `SLA_API_AUTH` and `SPORTS_API_KEY` should be added as secrets. Do not upload `.env`, `.dev.vars`, or real API keys to GitHub.
+`MATCH_API_KEY`, `CHANNELS_API_KEY` when used, `SLA_API_AUTH` and `SPORTS_API_KEY` should be added as secrets. Do not upload `.env`, `.dev.vars`, or real API keys to GitHub.
 
 You can also use `SPORTS_API_EVENTS_URL` instead of `SPORTS_API_KEY` + `SPORTS_API_BASE_URL` if you prefer storing the complete SportsAPI events URL in Cloudflare, but the recommended setup is to keep only the key in `SPORTS_API_KEY`.
 

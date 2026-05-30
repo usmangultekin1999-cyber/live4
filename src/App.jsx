@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import CategoryBar from './components/CategoryBar.jsx';
 import MatchCard from './components/MatchCard.jsx';
+import ChannelCard from './components/ChannelCard.jsx';
 import StreamPlayer from './components/StreamPlayer.jsx';
-import { fetchMatches } from './lib/api.js';
+import { fetchMatches, fetchChannels } from './lib/api.js';
 import {
   ALL_CATEGORY,
   getCategoryId,
+  getChannelFromUrl,
   getMatchFromUrl,
   groupByCategory,
   isMatchSearchHit,
+  setChannelUrl,
   setMatchUrl,
   sortCategoryItems
 } from './lib/helpers.js';
@@ -92,12 +95,37 @@ function TopCategoryTabs({ categories, activeCategory, onChange, language }) {
   );
 }
 
-function EmptyState({ hasQuery, onClear, language }) {
+function ContentModeTabs({ viewMode, onChange, language, matchCount, channelCount }) {
+  return (
+    <div className="content-mode-tabs" aria-label={t(language, 'contentTabsAria')}>
+      <button
+        type="button"
+        className={viewMode === 'matches' ? 'is-active' : ''}
+        onClick={() => onChange('matches')}
+      >
+        <span aria-hidden="true">●</span>
+        <strong>{t(language, 'liveMatches')}</strong>
+        <small>{matchCount}</small>
+      </button>
+      <button
+        type="button"
+        className={viewMode === 'channels' ? 'is-active' : ''}
+        onClick={() => onChange('channels')}
+      >
+        <span aria-hidden="true">📺</span>
+        <strong>{t(language, 'channels')}</strong>
+        <small>{channelCount}</small>
+      </button>
+    </div>
+  );
+}
+
+function EmptyState({ hasQuery, onClear, language, titleKey = 'noMatchesFound', emptyKey = 'apiNoMatches', queryKey = 'noMatchesMatch', icon = '⚽' }) {
   return (
     <div className="empty-state">
-      <div className="empty-icon">⚽</div>
-      <h2>{t(language, 'noMatchesFound')}</h2>
-      <p>{hasQuery ? t(language, 'noMatchesMatch') : t(language, 'apiNoMatches')}</p>
+      <div className="empty-icon">{icon}</div>
+      <h2>{t(language, titleKey)}</h2>
+      <p>{hasQuery ? t(language, queryKey) : t(language, emptyKey)}</p>
       {hasQuery && <button type="button" onClick={onClear}>{t(language, 'clearFilters')}</button>}
     </div>
   );
@@ -129,11 +157,16 @@ function SkeletonGrid() {
 
 export default function App() {
   const [matches, setMatches] = useState([]);
+  const [channels, setChannels] = useState([]);
   const [status, setStatus] = useState('loading');
+  const [channelsStatus, setChannelsStatus] = useState('idle');
   const [error, setError] = useState('');
+  const [channelsError, setChannelsError] = useState('');
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY);
+  const [viewMode, setViewMode] = useState(() => getChannelFromUrl() ? 'channels' : 'matches');
   const [activeMatchId, setActiveMatchId] = useState(getMatchFromUrl());
+  const [activeChannelId, setActiveChannelId] = useState(getChannelFromUrl());
   const [language, setLanguage] = useState(getInitialLanguage);
 
   useEffect(() => {
@@ -161,6 +194,25 @@ export default function App() {
     }
   }, []);
 
+  const loadChannels = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setChannelsStatus('loading');
+      setChannelsError('');
+    }
+
+    try {
+      const payload = await fetchChannels();
+      setChannels(payload.data || []);
+      setChannelsStatus('ready');
+      setChannelsError('');
+    } catch (loadError) {
+      if (!silent) {
+        setChannelsStatus('error');
+        setChannelsError(loadError instanceof Error ? loadError.message : 'An unknown error occurred.');
+      }
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -178,8 +230,29 @@ export default function App() {
   }, [loadMatches]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function firstLoad() {
+      if (!cancelled) await loadChannels({ silent: viewMode !== 'channels' });
+    }
+
+    firstLoad();
+    const intervalId = window.setInterval(() => loadChannels({ silent: true }), AUTO_REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [loadChannels, viewMode]);
+
+  useEffect(() => {
     function onPopState() {
-      setActiveMatchId(getMatchFromUrl());
+      const nextMatchId = getMatchFromUrl();
+      const nextChannelId = getChannelFromUrl();
+      setActiveMatchId(nextMatchId);
+      setActiveChannelId(nextChannelId);
+      if (nextChannelId) setViewMode('channels');
+      else if (nextMatchId) setViewMode('matches');
     }
 
     window.addEventListener('popstate', onPopState);
@@ -206,6 +279,10 @@ export default function App() {
     });
   }, [matches, activeCategory, query]);
 
+  const filteredChannels = useMemo(() => {
+    return channels.filter((channel) => isMatchSearchHit(channel, query));
+  }, [channels, query]);
+
   const groupedMatches = useMemo(() => {
     if (activeCategory === ALL_CATEGORY) return groupByCategory(filteredMatches);
     return [[activeCategory, filteredMatches]];
@@ -216,14 +293,39 @@ export default function App() {
     return matches.find((match) => String(match.id) === String(activeMatchId)) || null;
   }, [matches, activeMatchId]);
 
+  const activeChannel = useMemo(() => {
+    if (!activeChannelId) return null;
+    return channels.find((channel) => String(channel.id) === String(activeChannelId)) || null;
+  }, [channels, activeChannelId]);
+
+  const activePlayable = activeChannel || activeMatch;
+
   function openMatch(match) {
+    setActiveChannelId(null);
     setActiveMatchId(String(match.id));
+    setViewMode('matches');
     setMatchUrl(String(match.id));
+  }
+
+  function openChannel(channel) {
+    setActiveMatchId(null);
+    setActiveChannelId(String(channel.id));
+    setViewMode('channels');
+    setChannelUrl(String(channel.id));
   }
 
   function closeMatch() {
     setActiveMatchId(null);
+    setActiveChannelId(null);
     setMatchUrl(null);
+    setChannelUrl(null);
+  }
+
+  function switchViewMode(mode) {
+    setViewMode(mode);
+    setActiveCategory(ALL_CATEGORY);
+    if (mode === 'matches') setChannelUrl(null);
+    if (mode === 'channels') setMatchUrl(null);
   }
 
   function clearFilters() {
@@ -247,25 +349,38 @@ export default function App() {
             activeCategory={activeCategory}
             onChange={setActiveCategory}
             language={language}
+            viewMode={viewMode}
+            onViewModeChange={switchViewMode}
+            channelsCount={channels.length}
           />
 
           <section className="content-wrap" aria-live="polite">
             <section className="content-top-tabs">
-              <TopCategoryTabs
-                categories={categories}
-                activeCategory={activeCategory}
-                onChange={setActiveCategory}
+              <ContentModeTabs
+                viewMode={viewMode}
+                onChange={switchViewMode}
                 language={language}
+                matchCount={matches.length}
+                channelCount={channels.length}
               />
+
+              {viewMode === 'matches' && (
+                <TopCategoryTabs
+                  categories={categories}
+                  activeCategory={activeCategory}
+                  onChange={setActiveCategory}
+                  language={language}
+                />
+              )}
             </section>
 
-            {status === 'loading' && <SkeletonGrid />}
+            {viewMode === 'matches' && status === 'loading' && <SkeletonGrid />}
 
-            {status === 'error' && (
+            {viewMode === 'matches' && status === 'error' && (
               <ErrorState message={error} onRetry={() => loadMatches()} language={language} />
             )}
 
-            {status === 'ready' && filteredMatches.length === 0 && (
+            {viewMode === 'matches' && status === 'ready' && filteredMatches.length === 0 && (
               <EmptyState
                 hasQuery={Boolean(query || activeCategory !== ALL_CATEGORY)}
                 onClear={clearFilters}
@@ -273,7 +388,7 @@ export default function App() {
               />
             )}
 
-            {status === 'ready' && filteredMatches.length > 0 && groupedMatches.map(([category, items]) => (
+            {viewMode === 'matches' && status === 'ready' && filteredMatches.length > 0 && groupedMatches.map(([category, items]) => (
               <section className="match-section" key={category}>
                 <div className="section-heading">
                   <div className="section-title-group">
@@ -300,11 +415,53 @@ export default function App() {
                 </div>
               </section>
             ))}
+
+            {viewMode === 'channels' && channelsStatus === 'loading' && <SkeletonGrid />}
+
+            {viewMode === 'channels' && channelsStatus === 'error' && (
+              <ErrorState message={channelsError} onRetry={() => loadChannels()} language={language} />
+            )}
+
+            {viewMode === 'channels' && channelsStatus === 'ready' && filteredChannels.length === 0 && (
+              <EmptyState
+                hasQuery={Boolean(query)}
+                onClear={clearFilters}
+                language={language}
+                titleKey="noChannelsFound"
+                emptyKey="apiNoChannels"
+                icon="📺"
+              />
+            )}
+
+            {viewMode === 'channels' && channelsStatus === 'ready' && filteredChannels.length > 0 && (
+              <section className="match-section channel-section">
+                <div className="section-heading">
+                  <div className="section-title-group">
+                    <span className="section-sport-icon" aria-hidden="true">📺</span>
+                    <h2>{t(language, 'channels')}</h2>
+                  </div>
+                  <div className="section-actions">
+                    <span>{filteredChannels.length} {filteredChannels.length === 1 ? t(language, 'channelSingular') : t(language, 'channelPlural')}</span>
+                  </div>
+                </div>
+
+                <div className="channel-grid">
+                  {filteredChannels.map((channel) => (
+                    <ChannelCard
+                      key={channel.id}
+                      channel={channel}
+                      onOpen={openChannel}
+                      language={language}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
           </section>
         </div>
       </main>
 
-      {activeMatch && <StreamPlayer match={activeMatch} onClose={closeMatch} language={language} />}
+      {activePlayable && <StreamPlayer match={activePlayable} onClose={closeMatch} language={language} />}
     </div>
   );
 }
