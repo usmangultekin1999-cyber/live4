@@ -2732,3 +2732,414 @@ body::after {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* v35: clean match popup - every data panel lives below the broadcast */
+.player-panel {
+  width: min(1340px, calc(100vw - 2rem)) !important;
+  max-height: 94vh !important;
+  border-radius: 26px !important;
+  border: 1px solid rgba(0, 154, 63, 0.28) !important;
+  background: #07180d !important;
+  box-shadow: 0 42px 140px rgba(0,0,0,0.58), 0 0 0 1px rgba(255,255,255,0.04) inset !important;
+}
+
+.player-watch-grid,
+.player-watch-grid.has-standings {
+  display: block !important;
+  grid-template-columns: 1fr !important;
+  background: #000 !important;
+  border-bottom: 1px solid rgba(0, 176, 73, 0.18) !important;
+}
+
+.player-watch-grid .video-shell {
+  width: 100% !important;
+  min-height: min(70vh, 620px) !important;
+  aspect-ratio: 16 / 8.6 !important;
+  border: 0 !important;
+  background: #000 !important;
+}
+
+.player-bottom-stack {
+  display: grid !important;
+  grid-template-columns: minmax(320px, 0.78fr) minmax(0, 1.22fr) !important;
+  gap: 1rem !important;
+  padding: 1rem !important;
+  background:
+    radial-gradient(40rem 20rem at 0% 0%, rgba(0, 196, 78, 0.18), transparent 70%),
+    linear-gradient(135deg, #f8fff9 0%, #eefaf2 46%, #ffffff 100%) !important;
+}
+
+.player-bottom-stack .player-standings-card,
+.player-bottom-stack .official-odds-board {
+  margin: 0 !important;
+  border: 1px solid rgba(0, 152, 62, 0.13) !important;
+  border-radius: 24px !important;
+  background: rgba(255,255,255,0.92) !important;
+  box-shadow: 0 18px 44px rgba(0, 65, 28, 0.11), inset 0 1px 0 rgba(255,255,255,0.95) !important;
+}
+
+.player-bottom-stack .player-standings-card {
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  border-left: 1px solid rgba(0, 152, 62, 0.13) !important;
+  color: #07140b !important;
+}
+
+.player-bottom-stack .player-standings-head,
+.player-bottom-stack .player-score-card .player-standings-head {
+  position: relative !important;
+  top: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 1rem !important;
+  padding: 1rem 1rem 0.75rem !important;
+  border: 0 !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+}
+
+.player-bottom-stack .player-standings-head span,
+.player-bottom-stack .player-score-card .player-standings-head span,
+.player-bottom-stack .official-odds-head span {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.4rem !important;
+  color: #00963d !important;
+  font-size: 0.68rem !important;
+  font-weight: 1000 !important;
+  letter-spacing: 0.09em !important;
+  text-transform: uppercase !important;
+}
+
+.player-bottom-stack .player-standings-head span::before,
+.player-bottom-stack .official-odds-head span::before {
+  content: '' !important;
+  width: 0.45rem !important;
+  height: 0.45rem !important;
+  border-radius: 999px !important;
+  background: #00c94f !important;
+  box-shadow: 0 0 0 0.22rem rgba(0, 201, 79, 0.12) !important;
+}
+
+.player-bottom-stack .player-standings-head h3,
+.player-bottom-stack .player-score-card .player-standings-head h3,
+.player-bottom-stack .official-odds-head h3 {
+  margin: 0.25rem 0 0 !important;
+  color: #07140b !important;
+  font-size: 1.04rem !important;
+  font-weight: 1000 !important;
+  letter-spacing: -0.035em !important;
+}
+
+.player-bottom-stack .player-standings-head small,
+.player-bottom-stack .player-score-card .player-standings-head small,
+.player-bottom-stack .official-odds-head small {
+  min-width: auto !important;
+  max-width: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0.38rem 0.62rem !important;
+  border-radius: 999px !important;
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #049b3b, #11d760) !important;
+  box-shadow: 0 10px 22px rgba(0, 147, 57, 0.20) !important;
+  font-size: 0.72rem !important;
+  font-weight: 1000 !important;
+  text-align: center !important;
+}
+
+.player-bottom-stack .scoreboard-hero {
+  margin: 0.15rem 1rem 0.75rem !important;
+  min-height: 0 !important;
+  padding: 0.95rem !important;
+  border-radius: 22px !important;
+  border: 1px solid rgba(0, 161, 62, 0.12) !important;
+  background:
+    radial-gradient(12rem 9rem at 10% 20%, rgba(0, 207, 83, 0.18), transparent 68%),
+    radial-gradient(12rem 9rem at 90% 80%, rgba(0, 138, 52, 0.10), transparent 70%),
+    linear-gradient(135deg, #f7fff9, #eaf8ef) !important;
+}
+
+.player-bottom-stack .scoreboard-team .team-logo {
+  width: 3.6rem !important;
+  height: 3.6rem !important;
+  border: 3px solid #ffffff !important;
+  box-shadow: 0 12px 26px rgba(0, 74, 29, 0.14) !important;
+}
+
+.player-bottom-stack .scoreboard-team strong {
+  color: #07140b !important;
+  font-size: 0.78rem !important;
+  letter-spacing: -0.015em !important;
+}
+
+.player-bottom-stack .scoreboard-score {
+  padding: 0.38rem 0.5rem !important;
+  background: linear-gradient(135deg, #008d35, #13d75d) !important;
+}
+
+.player-bottom-stack .scoreboard-score strong {
+  min-width: 1.2rem !important;
+  font-size: 0.92rem !important;
+}
+
+.player-bottom-stack .scoreboard-score span {
+  width: 1.42rem !important;
+  height: 1.42rem !important;
+  font-size: 0.62rem !important;
+}
+
+.player-bottom-stack .standings-table--compact {
+  padding: 0 1rem 1rem !important;
+  display: grid !important;
+  gap: 0.42rem !important;
+}
+
+.player-bottom-stack .standings-table--compact .standings-row {
+  grid-template-columns: 1.55rem minmax(0, 1fr) 3rem 3.55rem !important;
+  min-height: 2.55rem !important;
+  padding: 0.42rem 0.55rem !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(0, 130, 50, 0.09) !important;
+  color: #173421 !important;
+  background: rgba(255,255,255,0.74) !important;
+  box-shadow: none !important;
+}
+
+.player-bottom-stack .standings-table--compact .standings-row--head {
+  min-height: 1.28rem !important;
+  padding-block: 0 !important;
+  color: #008a36 !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+.player-bottom-stack .standings-table--compact .standings-row.is-highlighted {
+  border-color: rgba(0, 173, 65, 0.24) !important;
+  background: linear-gradient(135deg, rgba(12, 207, 78, 0.13), rgba(255,255,255,0.94)) !important;
+}
+
+.player-bottom-stack .standings-team .team-logo {
+  width: 1.5rem !important;
+  height: 1.5rem !important;
+}
+
+.player-bottom-stack .standings-team strong,
+.player-bottom-stack .standings-table--compact .standings-team strong {
+  color: #07140b !important;
+  font-size: 0.76rem !important;
+}
+
+.player-bottom-stack .standings-table--compact .standings-row span:not(.standings-team),
+.player-bottom-stack .standings-table--compact .standings-row b {
+  color: #173421 !important;
+}
+
+.player-bottom-stack .official-odds-board {
+  padding: 1rem !important;
+  border-top: 1px solid rgba(0, 152, 62, 0.13) !important;
+  background:
+    radial-gradient(28rem 16rem at 100% 0%, rgba(0, 194, 77, 0.11), transparent 70%),
+    rgba(255,255,255,0.92) !important;
+}
+
+.player-bottom-stack .official-odds-board::before { display: none !important; }
+
+.player-bottom-stack .official-odds-head {
+  position: relative !important;
+  z-index: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 1rem !important;
+  margin: 0 0 0.8rem !important;
+}
+
+.player-bottom-stack .official-odds-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0.7rem !important;
+}
+
+.player-bottom-stack .official-odds-market,
+.player-bottom-stack .official-odds-market.is-fallback-market {
+  grid-column: auto !important;
+  padding: 0.78rem !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(0, 148, 59, 0.12) !important;
+  background: linear-gradient(180deg, #ffffff, #f3fbf6) !important;
+  box-shadow: 0 12px 26px rgba(0, 78, 31, 0.07) !important;
+}
+
+.player-bottom-stack .official-market-title {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.6rem !important;
+  margin-bottom: 0.58rem !important;
+}
+
+.player-bottom-stack .official-market-title strong {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: #07140b !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 0.84rem !important;
+}
+
+.player-bottom-stack .official-market-title em {
+  flex: 0 0 auto !important;
+  padding: 0.18rem 0.42rem !important;
+  border-radius: 999px !important;
+  color: #078c38 !important;
+  background: rgba(0, 194, 77, 0.10) !important;
+  font-size: 0.62rem !important;
+  font-weight: 1000 !important;
+  font-style: normal !important;
+}
+
+.player-bottom-stack .official-outcomes,
+.player-bottom-stack .official-odds-market.is-fallback-market .official-outcomes {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 0.48rem !important;
+}
+
+.player-bottom-stack .official-odd-chip,
+.player-bottom-stack .official-odd-chip.is-link-only {
+  min-height: 3.2rem !important;
+  padding: 0.55rem 0.48rem !important;
+  display: grid !important;
+  align-content: center !important;
+  gap: 0.24rem !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(0, 138, 54, 0.12) !important;
+  background: #ffffff !important;
+  box-shadow: inset 0 -1px 0 rgba(0, 154, 63, 0.06) !important;
+  text-decoration: none !important;
+}
+
+.player-bottom-stack .official-odd-chip:hover {
+  transform: translateY(-1px) !important;
+  border-color: rgba(0, 180, 70, 0.42) !important;
+  background: #eefdF2 !important;
+  box-shadow: 0 12px 22px rgba(0, 119, 44, 0.12) !important;
+}
+
+.player-bottom-stack .official-odd-chip span,
+.player-bottom-stack .official-odd-chip.is-link-only span {
+  overflow: hidden !important;
+  color: #173421 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 0.74rem !important;
+  font-weight: 900 !important;
+}
+
+.player-bottom-stack .official-odd-chip strong,
+.player-bottom-stack .official-odd-chip.is-link-only strong {
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  color: #009b3d !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 0.94rem !important;
+  font-weight: 1000 !important;
+  text-transform: none !important;
+}
+
+.player-extra-data {
+  padding: 0 1rem 1rem !important;
+  background: linear-gradient(180deg, #ffffff, #f6fff8) !important;
+}
+
+.player-extra-data .match-insights,
+.player-extra-data .match-insights--single {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 1rem !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.player-extra-data .match-insights--single .insight-side,
+.player-extra-data .insight-side,
+.player-extra-data .insight-main {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
+  gap: 1rem !important;
+}
+
+.player-extra-data .insight-panel {
+  border: 1px solid rgba(0, 148, 59, 0.12) !important;
+  border-radius: 20px !important;
+  background: rgba(255,255,255,0.92) !important;
+  box-shadow: 0 12px 30px rgba(0, 70, 28, 0.08) !important;
+}
+
+.player-extra-data .insight-heading {
+  border-bottom: 1px solid rgba(0, 148, 59, 0.09) !important;
+}
+
+.player-extra-data .insight-heading h3,
+.player-extra-data .mini-team strong,
+.player-extra-data .event-info-list dd,
+.player-extra-data .timeline-item h4,
+.player-extra-data .lineup-columns h4,
+.player-extra-data .odds-market h4 {
+  color: #07140b !important;
+}
+
+.player-extra-data .insight-empty,
+.player-extra-data .insight-loading,
+.player-extra-data .event-info-list dt,
+.player-extra-data .timeline-item p,
+.player-extra-data .lineup-columns p,
+.player-extra-data .lineup-columns li,
+.player-extra-data .related-row span,
+.player-extra-data .stat-values span {
+  color: #4d715a !important;
+}
+
+.player-extra-data .stat-values,
+.player-extra-data .related-row strong {
+  color: #07140b !important;
+}
+
+.player-extra-data .timeline-item,
+.player-extra-data .related-row,
+.player-extra-data .odds-chip {
+  background: #f2fbf5 !important;
+}
+
+@media (max-width: 980px) {
+  .player-panel { width: min(100%, calc(100vw - 1rem)) !important; }
+  .player-watch-grid .video-shell { min-height: 280px !important; aspect-ratio: 16 / 9 !important; }
+  .player-bottom-stack { grid-template-columns: 1fr !important; padding: 0.78rem !important; }
+  .player-bottom-stack .official-odds-grid { grid-template-columns: 1fr !important; }
+  .player-bottom-stack .official-odds-head,
+  .player-bottom-stack .player-standings-head,
+  .player-bottom-stack .player-score-card .player-standings-head {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 0.55rem !important;
+  }
+  .player-extra-data { padding: 0 0.78rem 0.78rem !important; }
+}
+
+@media (max-width: 620px) {
+  .player-overlay { padding: 0.45rem !important; }
+  .player-panel { border-radius: 18px !important; }
+  .player-watch-grid .video-shell { min-height: 220px !important; }
+  .player-bottom-stack .scoreboard-hero { grid-template-columns: 1fr !important; }
+  .player-bottom-stack .scoreboard-score { order: -1 !important; justify-self: center !important; }
+  .player-bottom-stack .standings-table--compact .standings-row { grid-template-columns: 1.3rem minmax(0, 1fr) 2.4rem 3.1rem !important; font-size: 0.68rem !important; }
+  .player-bottom-stack .official-outcomes,
+  .player-bottom-stack .official-odds-market.is-fallback-market .official-outcomes { grid-template-columns: 1fr !important; }
+}

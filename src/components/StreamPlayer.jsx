@@ -214,7 +214,7 @@ function OfficialOddsBoard({ details, match, language }) {
           <span>{hasOfficialMarkets ? t(language, 'officialOdds') : t(language, 'odds')}</span>
           <h3>{t(language, 'matchOdds')}</h3>
         </div>
-        <small>{hasOfficialMarkets ? t(language, 'tapOddsToBet') : t(language, 'oddsFallbackText')}</small>
+        <small>{hasOfficialMarkets ? t(language, 'tapOddsToBet') : 'Cryptobet'}</small>
       </div>
 
       <div className="official-odds-grid">
@@ -486,7 +486,7 @@ export default function StreamPlayer({ match, onClose, language }) {
           </div>
         )}
 
-        <div className={`player-watch-grid ${standings ? 'has-standings' : ''}`}>
+        <div className="player-watch-grid">
           <div className="video-shell">
             {mode === 'loading' && (
               <div className="video-message" aria-label="Loading stream">
@@ -520,20 +520,25 @@ export default function StreamPlayer({ match, onClose, language }) {
               />
             )}
           </div>
-
-          <PlayerStandings standings={standings} match={match} language={language} />
         </div>
 
-        {!isChannel && <OfficialOddsBoard details={details} match={match} language={language} />}
+        {!isChannel && (
+          <div className="player-bottom-stack">
+            {standings && <PlayerStandings standings={standings} match={match} language={language} />}
+            <OfficialOddsBoard details={details} match={match} language={language} />
+          </div>
+        )}
 
         {!isChannel && (
-          <MatchInsights
-            details={details}
-            status={detailsStatus}
-            error={detailsError}
-            match={match}
-            language={language}
-          />
+          <div className="player-extra-data">
+            <MatchInsights
+              details={details}
+              status={detailsStatus}
+              error={detailsError}
+              match={match}
+              language={language}
+            />
+          </div>
         )}
       </section>
     </div>
